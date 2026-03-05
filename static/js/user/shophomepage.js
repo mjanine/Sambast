@@ -1,4 +1,3 @@
-// Product Data
 var data = [
     { id: 1, name: "Product A", cat: "Category 1", price: 500, desc: "Premium selection product description." },
     { id: 2, name: "Product B", cat: "Category 1", price: 750, desc: "High quality item with best reviews." },
@@ -6,12 +5,11 @@ var data = [
     { id: 4, name: "Product D", cat: "Category 3", price: 300, desc: "Budget friendly option for daily needs." }
 ];
 
-// State Management
+var currentCheckout = [];
 var cartSet = new Set();
 var globalQty = 0;
-var globalPrice = 0;
+var globalPrice = 0; // Tracking the current subtotal
 
-// Render Products to Grid
 function render(list) {
     var grid = document.getElementById('itemGrid');
     grid.innerHTML = "";
@@ -37,7 +35,7 @@ function render(list) {
                     <p class="label-price">Product Amount: ${p.price}</p>
                     <div class="btn-row" onclick="event.stopPropagation()">
                         <button class="cart-act" onclick="addCart(${p.id},${p.price})">CART</button>
-                        <button class="buy-act" onclick="window.location.href='buy.html?id=${p.id}'">BUY</button>
+                        <button class="buy-act" onclick="buyNow(${p.id})">BUY</button>
                     </div>
                 </div>
                 <div class="back-face" onclick="toggle(${p.id})">
@@ -50,7 +48,6 @@ function render(list) {
     }
 }
 
-// UI Interaction Functions
 function toggle(id) { 
     document.getElementById("p-" + id).classList.toggle('is-flipped'); 
 }
@@ -63,22 +60,74 @@ function qtyChange(id, d) {
 
 function addCart(id, pr) {
     var q = parseInt(document.getElementById("qval-" + id).innerText);
+    var product = data.find(p => p.id === id);
+    
     cartSet.add(id);
     globalQty += q;
-    globalPrice += (pr * q);
+    globalPrice += (pr * q); // Calculate and update subtotal
     
-    // Update UI elements
     document.getElementById('cartCount').innerText = cartSet.size;
     document.getElementById('btnQty').innerText = globalQty;
-    document.getElementById('subTotal').innerText = globalPrice;
+    
+    // Ensure subTotal element exists before updating
+    var subTotalEl = document.getElementById('subTotal');
+    if (subTotalEl) {
+        subTotalEl.innerText = globalPrice === 0 ? "0000" : globalPrice;
+    }
+
+    var existingInCheckout = currentCheckout.find(item => item.id === id);
+    if(existingInCheckout) {
+        existingInCheckout.qty += q;
+    } else {
+        currentCheckout.push({
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            qty: q
+        });
+    }
+
+    var cart = JSON.parse(localStorage.getItem('cart')) || [];
+    var existingInCart = cart.find(item => item.id === id);
+    if(existingInCart) {
+        existingInCart.qty += q;
+    } else {
+        cart.push({ id: product.id, name: product.name, price: product.price, qty: q });
+    }
+    localStorage.setItem('cart', JSON.stringify(cart));
+    
+    alert(product.name + " added to checkout list!");
 }
 
-// Navigation and Filtering
+function buyNow(id) {
+    var q = parseInt(document.getElementById("qval-" + id).innerText);
+    var product = data.find(p => p.id === id);
+    
+    var directItem = [{
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        qty: q
+    }];
+    
+    localStorage.setItem('checkoutItems', JSON.stringify(directItem));
+    window.location.href = 'checkout.html';
+}
+
+function handleCheckout() {
+    if (currentCheckout.length === 0) {
+        alert("Please add items to cart first!");
+        return;
+    }
+
+    localStorage.setItem('checkoutItems', JSON.stringify(currentCheckout));
+    window.location.href = 'checkout.html';
+}
+
 function filterFn(cat, btn) {
     var btns = document.querySelectorAll('.cat-pill');
     btns.forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    
     var filtered = (cat === 'All') ? data : data.filter(x => x.cat === cat);
     render(filtered);
 }
@@ -89,7 +138,22 @@ function searchFn() {
     render(results);
 }
 
-// Initial Load
+function closeStatusModal() {
+    document.getElementById('statusModal').style.display = 'none';
+    window.history.replaceState({}, document.title, window.location.pathname);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     render(data);
+
+    const checkoutBtn = document.querySelector('.checkout-trigger');
+    if (checkoutBtn) {
+        checkoutBtn.onclick = handleCheckout;
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('showStatus') === 'true') {
+        const modal = document.getElementById('statusModal');
+        if (modal) modal.style.display = 'flex';
+    }
 });
