@@ -1,0 +1,152 @@
+/* RESET */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Inter', sans-serif;
+}
+
+/* Force standard desktop view to center the mobile frame */
+body.progress-body {
+    background: #ffffff;
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+}
+
+/* MOBILE WRAPPER - This is the "Phone" screen */
+.main-wrapper {
+    width: 100%;
+    max-width: 420px; 
+    height: 100vh;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    /* subtle shadow helps define the mobile edge on white desktop backgrounds */
+    box-shadow: 0 0 15px rgba(0,0,0,0.05);
+}
+
+/* NAV */
+.progress-nav {
+    display: flex;
+    justify-content: space-between;
+    padding: 20px 16px;
+    align-items: center;
+}
+
+.close-btn {
+    background: #fff;
+    border: 1px solid #ddd;
+    width: 35px;
+    height: 35px;
+    border-radius: 50%;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.help-btn {
+    background: #fff;
+    border: 1px solid #ddd;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 12px;
+}
+
+/* SCROLLABLE CONTENT */
+.scroll-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 0 120px;
+}
+
+/* STATUS BOX (The Grey Card) */
+.status-main-card {
+    background: #D9D9D9; 
+    margin: 0 16px 25px;
+    padding: 25px;
+    border-radius: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-left: 8px solid #111;
+}
+
+#statusText {
+    font-size: 22px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.time-info p {
+    font-size: 12px;
+    color: #444;
+    margin-top: 6px;
+    line-height: 1.4;
+}
+
+.status-icon {
+    font-size: 38px;
+}
+
+/* ORDER LIST STYLING */
+.details-section {
+    padding: 0 16px;
+}
+
+.details-section h3 {
+    font-size: 16px;
+    font-weight: 800;
+    margin-bottom: 18px;
+}
+
+.detail-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+
+.detail-item span {
+    color: #666;
+}
+
+.order-id {
+    color: #007bff;
+}
+
+.divider {
+    border: 0;
+    border-top: 1px solid #eee;
+    margin: 20px 0;
+}
+
+.total-row {
+    font-size: 16px;
+}
+
+.total-row strong {
+    font-weight: 900;
+}
+
+/* FOOTER */
+.progress-footer {
+    padding: 16px;
+    background: #ffffff;
+}
+
+.support-btn {
+    width: 100%;
+    padding: 16px;
+    background: #111;
+    color: #fff;
+    border: none;
+    border-radius: 16px;
+    font-weight: 800;
+    font-size: 16px;
+    cursor: pointer;
+}
