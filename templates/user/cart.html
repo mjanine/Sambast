@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Your Cart</title>
+    <link rel="stylesheet" href="../../static/css/user/cart.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="cart-page">
+
+    <div class="mobile-container">
+        <header class="cart-header">
+            <a href="shophomepage.html" class="back-btn">←</a>
+            <h1 class="header-title">Cart</h1>
+        </header>
+
+        <main class="cart-items-list" id="cartList">
+            </main>
+
+        <footer class="cart-footer">
+    <div class="summary-info">
+        <p class="subtotal-row">Subtotal: <span id="displaySubtotal">0000</span></p>
+        <p class="discount-row">Total Discount: <span id="displayDiscount">0000</span></p>
+    </div>
+    <button class="checkout-btn">Check Out (<span id="selectedCount">0</span>)</button>
+</footer>
+    </div>
+
+    <script src="../../static/js/user/cart.js"></script>
+</body>
+</html>

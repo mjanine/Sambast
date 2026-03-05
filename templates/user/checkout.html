@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Check Out</title>
+    <link rel="stylesheet" href="../../static/css/user/checkout.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="checkout-page">
+
+    <div class="mobile-container">
+        <header class="checkout-header">
+            <a href="cart.html" class="back-btn">←</a>
+            <h1 class="header-title">Check Out</h1>
+        </header>
+
+        <main class="checkout-content">
+            <div class="info-card user-info">
+                <h2 id="tempCustomerName">JUAN DELA CRUZ</h2>
+                <p id="tempCustomerPhone">09123456789</p>
+            </div>
+
+            <div class="info-card products-container" id="checkoutList">
+                </div>
+
+            <div class="info-card order-no-box">
+                <p>Order no.: <strong id="tempOrderNo">00000000</strong></p>
+            </div>
+
+            <div class="info-card payment-method">
+                <h3>Payment Method</h3>
+                <label class="radio-row">
+                    <span>Cash on Pick-up</span>
+                    <input type="radio" name="payment" value="Cash on Pick-up" checked>
+                    <span class="custom-radio"></span>
+                </label>
+                <label class="radio-row">
+                    <span>GCash</span>
+                    <input type="radio" name="payment" value="GCash">
+                    <span class="custom-radio"></span>
+                </label>
+            </div>
+        </main>
+
+        <footer class="checkout-footer">
+            <div class="place-order-bar" id="placeOrderBtn">
+                <span class="place-label">Place Order</span>
+                <span class="total-label">total amount: <span id="finalTotal">0000</span></span>
+            </div>
+        </footer>
+    </div>
+
+    <script src="../../static/js/user/checkout.js"></script>
+</body>
+</html>

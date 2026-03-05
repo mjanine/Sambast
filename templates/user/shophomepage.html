@@ -51,6 +51,34 @@
             </button>
         </footer>
     </div>
+
+    <div id="statusModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Order Status</h3>
+            <button class="close-modal" onclick="closeStatusModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="status-card">
+                <p class="order-id-label">Order no.: <strong>00000000</strong></p>
+                <div class="progress-tracker">
+                    <div class="step active">
+                        <span class="dot"></span>
+                        <p>Order Placed</p>
+                    </div>
+                    <div class="step processing">
+                        <span class="dot"></span>
+                        <p>Preparing</p>
+                    </div>
+                    <div class="step">
+                        <span class="dot"></span>
+                        <p>Ready for Pick-up</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 <script src="../../static/js/user/shophomepage.js"></script>
 </body>
 </html>

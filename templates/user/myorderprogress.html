@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Order Status</title>
+    <link rel="stylesheet" href="../../static/css/user/progress.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="progress-body">
+
+    <div class="main-wrapper">
+        
+        <header class="progress-nav">
+            <button class="close-btn" onclick="window.location.href='shophomepage.html'">×</button>
+            <button class="help-btn">Help</button>
+        </header>
+
+        <main class="scroll-content">
+            <div class="status-main-card">
+                <div class="time-info">
+                    <h1 id="statusText">PREPARING</h1>
+                    <p id="statusDesc">Your order is being prepared. We'll notify you when it's ready for pick-up!</p>
+                </div>
+                <div class="status-icon">📦</div>
+            </div>
+
+            <div class="details-section">
+                <h3>Order Details</h3>
+                
+                <div id="orderItemsList">
+                    </div>
+
+                <hr class="divider">
+
+                <div class="detail-item">
+                    <span>Order number</span>
+                    <strong class="order-id">#00000000</strong>
+                </div>
+
+                <div class="detail-item">
+                    <span>Recipient</span>
+                    <strong>JUAN DELA CRUZ</strong>
+                </div>
+
+                <div class="detail-item">
+                    <span>Contact Number</span>
+                    <strong>09123456789</strong>
+                </div>
+
+                <hr class="divider">
+
+                <div class="detail-item total-row">
+                    <span>Total (Incl. TAX)</span>
+                    <strong id="progressTotal">0000</strong>
+                </div>
+            </div>
+        </main>
+
+        <footer class="progress-footer">
+            <button class="support-btn" onclick="window.location.href='shophomepage.html'">Back to Shop</button>
+        </footer>
+    </div>
+
+    <script src="../../static/js/user/progress.js"></script>
+</body>
+</html>
