@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orders</title>
+    <link rel="stylesheet" href="../../static/css/admin/orders.css">
+</head>
+
+<body>
+
+    <header class="header">
+        <div class="logo">LOGO</div>
+        <div class="menu">&#9776;</div>
+    </header>
+
+    <section class="orders">
+
+        <h1>ORDERS</h1>
+
+        <div class="tabs">
+            <button class="tab active" data-filter="all">All</button>
+            <button class="tab" data-filter="pending">Pending (1)</button>
+            <button class="tab" data-filter="processing">Processing (1)</button>
+            <button class="tab" data-filter="ready">Ready for pick-up (1)</button>
+            <button class="tab" data-filter="completed">Completed (1)</button>
+            <button class="tab" data-filter="cancelled">Cancelled</button>
+        </div>
+
+
+        <!-- ORDER CARD -->
+        <div class="order-card" data-status="pending">
+
+            <div class="order-header">
+                <div>
+                    <strong>ORDER NO. 000</strong>
+                    <div class="customer">Juan Dela Cruz - 09123456789</div>
+                </div>
+
+                <div class="price">
+                    ₱ 4734
+                    <span>Cash on pick up</span>
+                </div>
+            </div>
+
+            <hr>
+
+            <div class="products">
+                <div>Product name 10kg × 1 <span>₱ 1234</span></div>
+                <div>Product name 5kg × 3 <span>₱ 3000</span></div>
+                <div>Product name 2kg × 5 <span>₱ 500</span></div>
+            </div>
+
+            <div class="actions">
+                <button class="primary">Mark as Processing</button>
+                <button class="secondary">Cancel</button>
+            </div>
+
+        </div>
+
+
+        <!-- PROCESSING ORDER -->
+        <div class="order-card" data-status="processing">
+
+            <div class="order-header">
+                <div>
+                    <strong>ORDER NO. 001</strong>
+                    <div class="customer">Juan Dela Cruz - 09123456789</div>
+                </div>
+
+                <div class="price">
+                    ₱ 4734
+                    <span>GCash</span>
+                </div>
+            </div>
+
+            <hr>
+
+            <div class="products">
+                <div>Product name 10kg × 1 <span>₱ 1234</span></div>
+                <div>Product name 5kg × 3 <span>₱ 3000</span></div>
+                <div>Product name 2kg × 5 <span>₱ 500</span></div>
+            </div>
+
+            <div class="actions">
+                <button class="primary">Mark as Ready for pick up</button>
+                <button class="secondary">Cancel</button>
+            </div>
+
+        </div>
+
+
+        <!-- CANCELLED -->
+        <div class="order-card" data-status="cancelled">
+
+            <div class="order-header">
+                <div>
+                    <strong>ORDER NO. 002</strong>
+                    <div class="customer">Juan Dela Cruz - 09123456789</div>
+                </div>
+
+                <div class="price">
+                    ₱ 4734
+                    <span>Cash on pick up</span>
+                </div>
+            </div>
+
+            <hr>
+
+            <div class="products">
+                <div>Product name 10kg × 1 <span>₱ 1234</span></div>
+                <div>Product name 5kg × 3 <span>₱ 3000</span></div>
+                <div>Product name 2kg × 5 <span>₱ 500</span></div>
+            </div>
+
+        </div>
+
+
+    </section>
+
+    <script src="../../static/js/admin/orders.js"></script>
+</body>
+</html>
