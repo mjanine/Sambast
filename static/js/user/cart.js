@@ -54,6 +54,15 @@ function toggleSelect(index) {
 
 function calculateTotal() {
     let total = 0;
+    const footer = document.querySelector('.cart-footer');
+
+    // Toggle footer visibility based on selection
+    if (selectedItems.size > 0) {
+        footer.style.display = 'flex';
+    } else {
+        footer.style.display = 'none';
+    }
+
     selectedItems.forEach(index => {
         if (cart[index]) {
             total += (cart[index].price * cart[index].qty);
