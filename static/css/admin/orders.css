@@ -67,13 +67,13 @@ pointer-events:auto;
 }
 
 .sidebar-menu {
+    padding-top: 30px;
     flex: 1 1 auto;      /* take all remaining space */
     overflow-y: auto;    /* scroll if many items */
     display: flex;
     flex-direction: column;
     gap: 20px;
 }
-
 
 /* Close button */
 .close-btn {
@@ -111,19 +111,6 @@ pointer-events:auto;
     border-radius: 25px;
     width: 120px;
     text-align: center;
-}
-
-.logout {
-    text-align: center;
-    font-weight: 600;
-    cursor: pointer;
-    margin-top: 20px;    /* optional spacing from nav links */
-    flex-shrink: 0;      /* ensure it doesn't shrink */
-}
-.logout a {
-    text-decoration: none;
-    color: inherit;
-    display: block;
 }
 
 .orders{
