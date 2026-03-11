@@ -45,75 +45,85 @@ opacity:1;
 pointer-events:auto;
 }
 
-/* SIDEBAR */
+.sidebar {
+    position: fixed;
+    top: 0;
+    right: -300px;
+    width: 260px;
+    height: 100%;
+    background: #eaeaea;
+    border-top-left-radius: 25px;
+    border-bottom-left-radius: 25px;
+    padding: 30px 25px;
+    transition: 0.35s;
+    z-index: 10;
 
-.sidebar{
-position:fixed;
-top:0;
-right:-300px;
-width:260px;
-height:100%;
-background:#eaeaea;
-border-top-left-radius:25px;
-border-bottom-left-radius:25px;
-padding:30px 25px;
-transition:0.35s;
-z-index:10;
-
-display:flex;
-flex-direction:column;
-justify-content:space-between;
+    display: flex;
+    flex-direction: column;
 }
 
-.sidebar.open{
-right:0;
+.sidebar.open {
+    right: 0;
 }
 
-/* CLOSE BUTTON */
+.sidebar-menu {
+    flex: 1 1 auto;      /* take all remaining space */
+    overflow-y: auto;    /* scroll if many items */
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
 
-.close-btn{
-font-size:18px;
-margin-bottom:30px;
-cursor:pointer;
+
+/* Close button */
+.close-btn {
+    font-size: 18px;
+    margin-bottom: 20px;
+    cursor: pointer;
 }
 
 /* NAV LINKS */
-
-.nav-links{
-list-style:none;
-padding:0;
-margin:0;
-display:flex;
-flex-direction:column;
-gap:20px;
-font-weight:600;
+.nav-links {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    font-weight: 600;
 }
 
-.nav-links li{
-cursor:pointer;
-transition:0.2s;
+.nav-links li a {
+    text-decoration: none;
+    color: inherit;
+    display: block;
+    padding: 8px 0;
 }
 
-.nav-links li:hover{
-opacity:0.7;
+.nav-links li:hover {
+    opacity: 0.7;
 }
 
-.nav-links .active{
-background:black;
-color:white;
-padding:10px 18px;
-border-radius:25px;
-width:120px;
-text-align:center;
+.nav-links .active {
+    background: black;
+    color: white;
+    padding: 10px 18px;
+    border-radius: 25px;
+    width: 120px;
+    text-align: center;
 }
 
-/* LOGOUT */
-
-.logout{
-text-align:center;
-font-weight:600;
-cursor:pointer;
-margin-bottom:10px;
+.logout {
+    text-align: center;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 20px;    /* optional spacing from nav links */
+    flex-shrink: 0;      /* ensure it doesn't shrink */
+}
+.logout a {
+    text-decoration: none;
+    color: inherit;
+    display: block;
 }
 
 .orders{
