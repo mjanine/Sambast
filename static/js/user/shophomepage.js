@@ -8,7 +8,7 @@ var data = [
 var currentCheckout = [];
 var cartSet = new Set();
 var globalQty = 0;
-var globalPrice = 0; // Tracking the current subtotal
+var globalPrice = 0;
 
 function render(list) {
     var grid = document.getElementById('itemGrid');
@@ -64,13 +64,20 @@ function addCart(id, pr) {
     
     cartSet.add(id);
     globalQty += q;
-    globalPrice += (pr * q); // Calculate and update subtotal
+    globalPrice += (pr * q); 
+
+    // FIXED: Show bottom bar when items are added
+    var bottomBar = document.querySelector('.bottom-bar');
+    if (bottomBar) {
+        bottomBar.style.display = 'flex';
+    }
     
     document.getElementById('cartCount').innerText = cartSet.size;
-    document.getElementById('btnQty').innerText = globalQty;
     
-    // Ensure subTotal element exists before updating
-    var subTotalEl = document.getElementById('subTotal');
+    var btnQtyEl = document.getElementById('btnQty');
+    if (btnQtyEl) btnQtyEl.innerText = globalQty;
+    
+    var subTotalEl = document.getElementById('displaySubtotal') || document.getElementById('subTotal');
     if (subTotalEl) {
         subTotalEl.innerText = globalPrice === 0 ? "0000" : globalPrice;
     }
@@ -96,7 +103,7 @@ function addCart(id, pr) {
     }
     localStorage.setItem('cart', JSON.stringify(cart));
     
-    alert(product.name + " added to checkout list!");
+    alert(product.name + " added to cart!");
 }
 
 function buyNow(id) {
