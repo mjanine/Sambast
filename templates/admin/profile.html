@@ -1,48 +1,71 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Profile</title>
-    <link rel="stylesheet" href="../../static/css/user/profile.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Profile</title>
+
+<link rel="stylesheet" href="../../static/css/admin/profile.css">
+
 </head>
-<body class="profile-body">
 
-    <div class="main-wrapper">
-        <header class="profile-header">
-            <button class="back-btn" onclick="history.back()">←</button>
-            <h1 class="header-title">Profile</h1>
-        </header>
+<body>
 
-        <main class="profile-content">
-            <div class="input-group">
-                <label>NAME</label>
-                <div class="static-field">JUAN DELA CRUZ</div>
-            </div>
+<header class="header">
+    <div class="logo">LOGO</div>
+    <div class="menu" id="menuBtn">&#9776;</div>
+</header>
 
-            <div class="input-group">
-                <label>CONTACT NO.</label>
-                <div class="editable-field">
-                    <span>09123456789</span>
-                    <button class="edit-icon">✎</button>
-                </div>
-            </div>
+<!-- Overlay -->
+<div id="overlay"></div>
 
-            <div class="nav-menu">
-                <button class="menu-btn" onclick="location.href='verifycode.html'">
-                    Change Password
-                </button>
-                <button class="menu-btn" onclick="location.href='history.html'">
-                    View Purchased History
-                </button>
-            </div>
-        </main>
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
 
-        <footer class="profile-footer">
-            <button class="logout-btn">LOG-OUT</button>
-        </footer>
+    <div class="close-btn" id="closeBtn">✕</div>
+
+    <div class="sidebar-menu">
+        <ul class="nav-links">
+            <li class="active"><a href="profile.html">PROFILE</a></li>
+            <li><a href="orders.html">ORDERS</a></li>
+            <li><a href="inventory.html">INVENTORY</a></li>
+            <li><a href="audit-logs.html">AUDIT LOGS</a></li>
+            <li><a href="analytics.html">ANALYTICS</a></li>
+            <li><a href="adminlogin.html">LOG-OUT</a></li>
+        </ul>
     </div>
+
+</div>
+
+<section class="profile">
+
+<h1>PROFILE</h1>
+
+<main class="profile-content">
+    <div class="input-group">
+        <label>NAME</label>
+        <div class="static-field">JUAN DELA CRUZ</div>
+    </div>
+
+    <div class="input-group">
+        <label>E-MAIL</label>
+        <div class="editable-field">
+            <span>juandelacruz@gmail.com</span>
+            <button class="edit-icon">✎</button>
+        </div>
+    </div>
+
+    <div class="nav-menu">
+        <button class="menu-btn" onclick="location.href='verifyemail.html'">
+            Change Password
+        </button>
+
+    </div>
+</main>
+
+</section>
+
+<script src="../../static/js/admin/profile.js"></script>
 
 </body>
 </html>
