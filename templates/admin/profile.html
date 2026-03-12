@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Profile</title>
+    <link rel="stylesheet" href="../../static/css/user/profile.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="profile-body">
+
+    <div class="main-wrapper">
+        <header class="profile-header">
+            <button class="back-btn" onclick="history.back()">←</button>
+            <h1 class="header-title">Profile</h1>
+        </header>
+
+        <main class="profile-content">
+            <div class="input-group">
+                <label>NAME</label>
+                <div class="static-field">JUAN DELA CRUZ</div>
+            </div>
+
+            <div class="input-group">
+                <label>CONTACT NO.</label>
+                <div class="editable-field">
+                    <span>09123456789</span>
+                    <button class="edit-icon">✎</button>
+                </div>
+            </div>
+
+            <div class="nav-menu">
+                <button class="menu-btn" onclick="location.href='verifycode.html'">
+                    Change Password
+                </button>
+                <button class="menu-btn" onclick="location.href='history.html'">
+                    View Purchased History
+                </button>
+            </div>
+        </main>
+
+        <footer class="profile-footer">
+            <button class="logout-btn">LOG-OUT</button>
+        </footer>
+    </div>
+
+</body>
+</html>
