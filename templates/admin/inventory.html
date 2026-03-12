@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inventory</title>
+
+<link rel="stylesheet" href="../../static/css/admin/inventory.css">
+</head>
+
+<body>
+
+<header class="header">
+    <div class="logo">LOGO</div>
+    <div class="menu" id="menuBtn">&#9776;</div>
+</header>
+
+<!-- Overlay -->
+<div id="overlay"></div>
+
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
+
+    <div class="close-btn" id="closeBtn">✕</div>
+
+    <div class="sidebar-menu">
+        <ul class="nav-links">
+            <li><a href="profile.html">PROFILE</a></li>
+            <li><a href="orders.html">ORDERS</a></li>
+            <li class="active"><a href="inventory.html">INVENTORY</a></li>
+            <li><a href="audit.html">AUDIT LOGS</a></li>
+            <li><a href="analytics.html">ANALYTICS</a></li>
+            <li><a href="adminlogin.html">LOG-OUT</a></li>
+        </ul>
+    </div>
+
+</div>
+
+<section class="inventory">
+
+<div class="inventory-header">
+<h1>INVENTORY</h1>
+<button class="add-btn" id="addProductBtn">+ Add Product</button>
+</div>
+
+<!-- SEARCH BAR -->
+<div class="search-box">
+<input type="text" placeholder="Search Product">
+<span class="search-icon">🔍</span>
+</div>
+
+<!-- INVENTORY CARDS -->
+
+<div class="inventory-card">
+<div class="card-header">
+<strong>PRODUCT NAME</strong>
+<span class="icons">
+<button class="edit">✎</button>
+<button class="delete">🗑</button>
+</span>
+</div>
+<div class="card-body">
+<div>CATEGORY</div>
+<div>STOCK</div>
+<div>RESERVED</div>
+<div>AVAILABLE</div>
+<div>PRICE</div>
+</div>
+</div>
+
+<div class="inventory-card">
+<div class="card-header">
+<strong>PRODUCT NAME</strong>
+<span class="icons">
+<button class="edit">✎</button>
+<button class="delete">🗑</button>
+</span>
+</div>
+<div class="card-body">
+<div>CATEGORY</div>
+<div>STOCK</div>
+<div>RESERVED</div>
+<div>AVAILABLE</div>
+<div>PRICE</div>
+</div>
+</div>
+
+</section>
+
+<!-- ADD PRODUCT MODAL -->
+
+<div class="modal" id="addProductModal">
+<div class="modal-content">
+<div class="modal-header">
+<h2>Add Product</h2>
+<span class="close" id="closeModal">✕</span>
+</div>
+<div class="modal-body">
+<label>Product Name</label>
+<input type="text" placeholder="Enter product name">
+
+<label>Category</label>
+<select>
+<option>Select Category</option>
+<option>Category 1</option>
+<option>Category 2</option>
+</select>
+
+<div class="flex-row">
+<div>
+<label>Price</label>
+<input type="text" placeholder="Price">
+</div>
+<div>
+<label>Stock</label>
+<input type="text" placeholder="Stock">
+</div>
+</div>
+
+<label>Description</label>
+<textarea placeholder="Product description"></textarea>
+
+<button class="submit-btn">Add Product</button>
+</div>
+</div>
+</div>
+
+<script src="../../static/js/admin/inventory.js"></script>
+</body>
+</html>
