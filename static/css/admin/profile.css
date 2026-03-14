@@ -7,7 +7,7 @@
 }
 
 body {
-    background: #F9F8F6;
+    background: #f1c045;
 }
 
 .header{
@@ -19,6 +19,7 @@ body {
 }
 
 .menu{
+    color: #F9F8F6;
     font-size:22px;
     cursor:pointer;
 }
@@ -144,12 +145,13 @@ body {
 .profile{
     padding:20px;
     flex:1;
-
-display:flex;
-flex-direction:column;
+    background: #f1c045;
+    display:flex;
+    flex-direction:column;
 }
 
 .profile h1{
+    color: #1A323E;
     margin-bottom:25px;
 }
 
@@ -168,7 +170,7 @@ flex-direction:column;
     font-weight:800;
     margin-bottom:8px;
     margin-left:15px;
-    color:#333;
+    color:#1A323E;
 }
 
 /* Rounded containers */
@@ -176,7 +178,7 @@ flex-direction:column;
 .editable-field,
 .menu-btn{
     width:100%;
-    background:#e0e0e0;
+    background:#D6D0C5;
     padding:18px 25px;
     border-radius:50px;
     font-size:14px;
@@ -189,14 +191,6 @@ flex-direction:column;
     align-items:center;
 }
 
-.static-field{
-    background:#dcdcdc;
-    color:#000;
-}
-
-.editable-field{
-    background:#dcdcdc;
-}
 
 .edit-icon{
     background:none;
@@ -217,6 +211,8 @@ flex-direction:column;
 .menu-btn{
     cursor:pointer;
     justify-content:center;
+    color: #D6D0C5;
+    background: #a6171c;
     transition:background 0.2s;
 }
 
