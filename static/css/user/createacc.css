@@ -1,8 +1,8 @@
 :root {
-    --bg-white: #ffffff;
-    --input-fill: #E0E0E0; 
-    --btn-black: #000000;
-    --accent-green: #39FF14;
+    --bg-white: #F9F8F6; /* Antique Cream */
+    --input-fill: #D6D0C5; /* Natural Beige */
+    --btn-black: #A6171C; /* Ruby Red */
+    --accent-green: #A6171C; /* Ruby Red */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -13,6 +13,7 @@ body, html {
     background-color: var(--bg-white);
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
+    color: #000000;
 }
 
 .mobile-container {
@@ -36,6 +37,7 @@ body, html {
     font-weight: 900;
     font-size: 1rem;
     letter-spacing: 0.2px;
+    color: #000000;
 }
 
 .auth-content {
@@ -53,6 +55,7 @@ body, html {
     letter-spacing: -1.2px; 
     margin-bottom: 40px;
     text-transform: uppercase;
+    color: #000000;
 }
 
 .auth-form { width: 100%; }
@@ -68,13 +71,14 @@ body, html {
     font-size: 0.85rem;
     font-weight: 600;
     outline: none;
+    color: #000000;
 }
 
 .primary-btn {
     width: 100%;
     padding: 14px;
     background-color: var(--btn-black);
-    color: white;
+    color: #ffffff; /* White text on Ruby Red button */
     border: none;
     border-radius: 50px;
     font-size: 0.95rem;
@@ -84,7 +88,7 @@ body, html {
 
 .description {
     font-size: 0.7rem;
-    color: #444;
+    color: #000000;
     margin-top: 18px;
     text-align: center;
     line-height: 1.4;
@@ -95,6 +99,7 @@ body, html {
     padding-bottom: 30px;
     font-size: 0.85rem;
     font-weight: 400;
+    color: #000000;
 }
 
 .accent-link {

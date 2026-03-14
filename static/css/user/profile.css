@@ -1,3 +1,10 @@
+:root {
+    --bg-antique-cream: #F9F8F6;
+    --fill-natural-beige: #D6D0C5; 
+    --action-ruby-red: #A6171C;
+    --text-pure-black: #000000;
+}
+
 /* RESET */
 * {
     margin: 0;
@@ -7,7 +14,7 @@
 }
 
 body.profile-body {
-    background: #ffffff;
+    background: var(--bg-antique-cream);
 }
 
 .main-wrapper {
@@ -33,11 +40,30 @@ body.profile-body {
     font-size: 24px;
     font-weight: bold;
     cursor: pointer;
+    color: var(--text-pure-black);
+    /* Necessary to anchor the container */
+    position: relative;
+    z-index: 999;
+}
+
+/* REFERENCED BACK BUTTON CONTAINER */
+.back-btn::before {
+    content: "";
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    background-color: var(--fill-natural-beige);
+    border-radius: 50%;
+    z-index: -1;
+    top: 55%;
+    left: 50%;
+    transform: translate(-50%, -50%);
 }
 
 .header-title {
     font-size: 20px;
     font-weight: 800;
+    color: var(--text-pure-black);
 }
 
 /* CONTENT & INPUTS */
@@ -55,15 +81,15 @@ body.profile-body {
     font-weight: 800;
     margin-bottom: 8px;
     margin-left: 15px;
-    color: #333;
+    color: var(--text-pure-black);
 }
 
-/* Rounded containers based on your images */
+/* Rounded containers - Updated to Natural Beige */
 .static-field, .editable-field, .menu-btn {
     width: 100%;
-    background: #e0e0e0;
+    background: var(--fill-natural-beige);
     padding: 18px 25px;
-    border-radius: 50px; /* pill shape */
+    border-radius: 50px; 
     font-size: 14px;
     font-weight: 700;
     box-shadow: 0 4px 10px rgba(0,0,0,0.1);
@@ -71,15 +97,12 @@ body.profile-body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    color: var(--text-pure-black);
 }
 
 .static-field {
-    background: #dcdcdc; /* Slightly different to show non-editable */
-    color: #000;
-}
-
-.editable-field {
-    background: #dcdcdc;
+    background: var(--fill-natural-beige);
+    opacity: 0.9;
 }
 
 .edit-icon {
@@ -87,6 +110,7 @@ body.profile-body {
     border: none;
     font-size: 18px;
     cursor: pointer;
+    color: var(--text-pure-black);
 }
 
 /* MENU BUTTONS */
@@ -115,7 +139,7 @@ body.profile-body {
 }
 
 .logout-btn {
-    background: #dcdcdc;
+    background: var(--fill-natural-beige);
     border: none;
     padding: 12px 35px;
     border-radius: 50px;
@@ -123,6 +147,7 @@ body.profile-body {
     font-size: 12px;
     box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     cursor: pointer;
+    color: var(--text-pure-black);
 }
 
 .logout-btn:active {

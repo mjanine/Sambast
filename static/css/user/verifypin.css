@@ -1,8 +1,8 @@
 :root {
-    --bg-white: #ffffff;
-    --input-fill: #E0E0E0; 
-    --btn-black: #000000;
-    --accent-green: #39FF14;
+    --bg-antique-cream: #F9F8F6;
+    --fill-natural-beige: #D6D0C5; 
+    --action-ruby-red: #A6171C;
+    --text-pure-black: #000000;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -10,7 +10,7 @@
 body, html {
     height: 100%;
     font-family: 'Inter', -apple-system, sans-serif;
-    background-color: var(--bg-white);
+    background-color: var(--bg-antique-cream);
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
 }
@@ -30,17 +30,46 @@ body, html {
     align-items: center;
     padding-top: 20px;
     height: 60px;
+    width: 100%;
+    position: relative;
 }
 
-.logo { font-weight: 900; font-size: 1rem; letter-spacing: 0.2px; }
+.logo { 
+    font-weight: 900; 
+    font-size: 1rem; 
+    letter-spacing: 0.2px; 
+    color: var(--text-pure-black);
+}
 
+/* REFERENCED BACK BUTTON LAYOUT */
 .back-btn { 
     text-decoration: none; 
-    color: #000; 
+    color: var(--text-pure-black); 
     font-size: 1.5rem; 
     font-weight: 800; 
     cursor: pointer;
-    z-index: 999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    z-index: 999; 
+    pointer-events: auto !important;
+    width: 40px;
+    height: 40px;
+    margin-right: -10px; 
+}
+
+.back-btn::before {
+    content: "";
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    background-color: var(--fill-natural-beige);
+    border-radius: 50%;
+    z-index: -1; 
+    top: 55%;
+    left: 50%;
+    transform: translate(-50%, -50%);
 }
 
 .auth-content {
@@ -64,12 +93,13 @@ body, html {
     letter-spacing: -0.8px;
     text-align: left;
     line-height: 1.2;
+    color: var(--text-pure-black);
 }
 
 .sub-text {
     font-size: 0.85rem;
     font-weight: 600;
-    color: #333;
+    color: var(--text-pure-black);
     margin-top: 8px;
 }
 
@@ -77,7 +107,7 @@ body, html {
 
 .pin-container {
     display: flex;
-    justify-content: center; /* Changed from space-between to center */
+    justify-content: center; 
     gap: 12px;
     margin-bottom: 40px;
     width: 100%;
@@ -87,20 +117,20 @@ body, html {
     width: 70px;
     height: 70px;
     border-radius: 18px;
-    border: 1px solid #000;
-    background-color: var(--input-fill);
+    border: 1px solid var(--text-pure-black);
+    background-color: var(--fill-natural-beige);
     text-align: center;
     font-size: 1.8rem;
     font-weight: 800;
     outline: none;
-    color: #000000; 
+    color: var(--text-pure-black); 
 }
 
 .primary-btn {
     width: 100%;
     padding: 16px;
-    background-color: var(--btn-black);
-    color: white;
+    background-color: var(--action-ruby-red);
+    color: #ffffff;
     border: none;
     border-radius: 50px;
     font-size: 0.9rem;
@@ -115,10 +145,11 @@ body, html {
     padding-bottom: 30px;
     font-size: 0.85rem;
     font-weight: 400;
+    color: var(--text-pure-black);
 }
 
 .accent-link {
-    color: var(--accent-green);
+    color: var(--action-ruby-red);
     text-decoration: none;
     font-weight: 700;
 }

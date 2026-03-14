@@ -1,4 +1,10 @@
-/* RESET */
+:root {
+    --bg-antique-cream: #F9F8F6;
+    --fill-natural-beige: #D6D0C5; 
+    --action-ruby-red: #A6171C;
+    --text-pure-black: #000000;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -6,24 +12,21 @@
     font-family: 'Inter', sans-serif;
 }
 
-/* Force standard desktop view to center the mobile frame */
 body.progress-body {
-    background: #ffffff;
+    background: var(--bg-antique-cream);
     display: flex;
     justify-content: center;
     min-height: 100vh;
 }
 
-/* MOBILE WRAPPER - This is the "Phone" screen */
 .main-wrapper {
     width: 100%;
     max-width: 420px; 
     height: 100vh;
-    background: #ffffff;
+    background: var(--bg-antique-cream);
     display: flex;
     flex-direction: column;
     position: relative;
-    /* subtle shadow helps define the mobile edge on white desktop backgrounds */
     box-shadow: 0 0 15px rgba(0,0,0,0.05);
 }
 
@@ -46,6 +49,23 @@ body.progress-body {
     display: flex;
     align-items: center;
     justify-content: center;
+    /* Necessary for the container positioning without moving the button */
+    position: relative;
+    z-index: 999;
+}
+
+/* REFERENCED CONTAINER */
+.close-btn::before {
+    content: "";
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    background-color: var(--fill-natural-beige);
+    border-radius: 50%;
+    z-index: -1;
+    top: 55%;
+    left: 50%;
+    transform: translate(-50%, -50%);
 }
 
 .help-btn {
@@ -55,6 +75,7 @@ body.progress-body {
     border-radius: 20px;
     font-weight: 700;
     font-size: 12px;
+    color: var(--text-pure-black);
 }
 
 /* SCROLLABLE CONTENT */
@@ -64,29 +85,31 @@ body.progress-body {
     padding: 10px 0 120px;
 }
 
-/* STATUS BOX (The Grey Card) */
+/* STATUS BOX (Natural Beige Card) */
 .status-main-card {
-    background: #D9D9D9; 
+    background: var(--fill-natural-beige); 
     margin: 0 16px 25px;
     padding: 25px;
     border-radius: 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-left: 8px solid #111;
+    border-left: 8px solid var(--text-pure-black);
 }
 
 #statusText {
     font-size: 22px;
     font-weight: 900;
     text-transform: uppercase;
+    color: var(--text-pure-black);
 }
 
 .time-info p {
     font-size: 12px;
-    color: #444;
+    color: var(--text-pure-black);
     margin-top: 6px;
     line-height: 1.4;
+    opacity: 0.8;
 }
 
 .status-icon {
@@ -96,6 +119,7 @@ body.progress-body {
 /* ORDER LIST STYLING */
 .details-section {
     padding: 0 16px;
+    color: var(--text-pure-black);
 }
 
 .details-section h3 {
@@ -112,16 +136,17 @@ body.progress-body {
 }
 
 .detail-item span {
-    color: #666;
+    opacity: 0.7;
 }
 
 .order-id {
-    color: #007bff;
+    color: var(--action-ruby-red);
+    font-weight: 700;
 }
 
 .divider {
     border: 0;
-    border-top: 1px solid #eee;
+    border-top: 1px solid var(--fill-natural-beige);
     margin: 20px 0;
 }
 
@@ -136,13 +161,13 @@ body.progress-body {
 /* FOOTER */
 .progress-footer {
     padding: 16px;
-    background: #ffffff;
+    background: var(--bg-antique-cream);
 }
 
 .support-btn {
     width: 100%;
     padding: 16px;
-    background: #111;
+    background: var(--action-ruby-red);
     color: #fff;
     border: none;
     border-radius: 16px;

@@ -1,3 +1,10 @@
+:root {
+    --bg-antique-cream: #F9F8F6;
+    --fill-natural-beige: #D6D0C5; 
+    --action-ruby-red: #A6171C;
+    --text-pure-black: #000000;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -8,13 +15,13 @@
 html, body {
     height: 100%;
     overflow: hidden;
-    background-color: #f5f5f5;
+    background-color: var(--bg-antique-cream);
 }
 
 .mobile-container {
     max-width: 420px;
     margin: 0 auto;
-    background: #fff;
+    background: var(--bg-antique-cream);
     height: 100vh;
     display: flex;
     flex-direction: column;
@@ -30,17 +37,34 @@ html, body {
 
 .back-btn {
     text-decoration: none;
-    color: #000;
+    color: var(--text-pure-black);
     font-size: 24px;
     font-weight: bold;
+    /* Added to anchor the container without moving the arrow */
+    position: relative;
+    z-index: 999;
+}
+
+/* Master Back Button Container */
+.back-btn::before {
+    content: "";
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    background-color: var(--fill-natural-beige);
+    border-radius: 50%;
+    z-index: -1;
+    top: 55%;
+    left: 50%;
+    transform: translate(-50%, -50%);
 }
 
 .header-title {
     font-size: 1.2rem;
     font-weight: 700;
+    color: var(--text-pure-black);
 }
 
-/* Scrollable area with hidden scrollbar */
 .history-list {
     flex: 1;
     padding: 0 16px 20px;
@@ -54,8 +78,8 @@ html, body {
 }
 
 .history-card {
-    background: #D9D9D9;
-    border-radius: 4px; /* Squarer corners based on your image */
+    background: var(--fill-natural-beige);
+    border-radius: 4px;
     padding: 15px;
     display: flex;
     gap: 15px;
@@ -67,7 +91,7 @@ html, body {
 .item-img-placeholder {
     width: 90px;
     height: 110px;
-    background: #111;
+    background: var(--text-pure-black);
     border-radius: 4px;
     color: #fff;
     display: flex;
@@ -85,40 +109,44 @@ html, body {
 .product-name {
     font-size: 18px;
     font-weight: 700;
+    color: var(--text-pure-black);
 }
 
 .kilos-size {
     font-size: 14px;
-    color: #333;
+    color: var(--text-pure-black);
     margin-bottom: 5px;
 }
 
 .amount-label {
     font-size: 12px;
-    color: #444;
+    color: var(--text-pure-black);
 }
 
 .qty-summary {
     text-align: right;
     font-size: 12px;
     margin-top: 5px;
+    color: var(--text-pure-black);
 }
 
 .total-amount {
     text-align: right;
     font-weight: 800;
     font-size: 14px;
+    color: var(--text-pure-black);
 }
 
 .order-no {
     font-size: 11px;
     margin-top: auto;
-    color: #555;
+    color: var(--text-pure-black);
+    opacity: 0.6;
 }
 
 .buy-again-btn {
     align-self: flex-end;
-    background: #111;
+    background: var(--action-ruby-red);
     color: #fff;
     border: none;
     padding: 8px 20px;
