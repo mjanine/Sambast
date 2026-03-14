@@ -6,7 +6,7 @@
 }
 
 body {
-    background: #F9F8F6;
+    background: #d5d0c5;
 }
 /* HEADER */
 
@@ -21,10 +21,10 @@ body {
 .menu{
     font-size:22px;
     cursor:pointer;
+    color: #a6171c;
 }
 
 /* OVERLAY */
-
 #overlay{
     position:fixed;
     top:0;
@@ -150,27 +150,37 @@ body {
     justify-content:space-between;
     align-items:center;
     margin-bottom:15px;
+    color: #1A323E;
 }
 
 .audit-btn{
-    background:black;
-    color:white;
-    border:none;
+    display:flex;
+    align-items:center;
+    gap:8px;
     padding:8px 16px;
+    border:none;
     border-radius:20px;
-    font-size:12px;
+    background:#a6171c;
+    color:white;
+    font-weight:600;
     cursor:pointer;
+}
+
+.download-icon{
+    width:16px;
+    height:16px;
 }
 
 /* SEARCH */
 
 .search-box{
-    background:#d9d5db;
+    background:#F9F8F6;
     border-radius:25px;
     padding:10px 15px;
     display:flex;
     align-items:center;
     margin-bottom:20px;
+    position:relative;
 }
 
 .search-box input{
@@ -181,14 +191,17 @@ body {
     font-size:14px;
 }
 
-.search-icon{
-    font-size:16px;
+.search-mag{
+    position:absolute;
+    right:14px;
+    top:50%;
+    transform:translateY(-50%);
 }
 
 /* CARD */
 
 .audit-card{
-    background:#cfcfcf;
+    background:#F9F8F6;
     border-radius:10px;
     padding:15px;
     margin-bottom:15px;
