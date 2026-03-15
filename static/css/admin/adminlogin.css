@@ -10,7 +10,7 @@
 body, html {
     height: 100%;
     font-family: 'Inter', -apple-system, sans-serif;
-    background: color #d6d0c5;
+    background: #d6d0c5;
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
 }
