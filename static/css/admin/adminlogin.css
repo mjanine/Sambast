@@ -33,9 +33,10 @@ body, html {
 }
 
 .logo {
-    font-weight: 900;
-    font-size: 1rem;
-    letter-spacing: 0.2px;
+    height: 40px;
+    width: auto;
+    display: block;  
+    object-fit: contain;  
 }
 
 .auth-content {

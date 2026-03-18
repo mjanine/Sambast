@@ -18,8 +18,15 @@ body {
     font-weight:bold;
 }
 
+.logo {
+    height: 40px;
+    width: auto;
+    display: block;  
+    object-fit: contain;  
+}
+
 .menu{
-    color: #F9F8F6;
+    color: #a6171c;
     font-size:22px;
     cursor:pointer;
 }

@@ -35,7 +35,12 @@ body, html {
     position: relative; 
 }
 
-.logo { font-weight: 900; font-size: 1rem; letter-spacing: 0.2px; }
+.logo {
+    height: 40px;
+    width: auto;
+    display: block;  
+    object-fit: contain;  
+}
 
 .back-btn{
     display:flex;
