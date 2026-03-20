@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Sambast | Admin Login</title>
-    <link rel="stylesheet" href="../../static/css/admin/adminlogin.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin/adminlogin.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body class="auth-page">
@@ -20,16 +20,26 @@
                 <h1 class="admin-name">REY!</h1>
             </div>
 
-            <form class="auth-form" action="verifyemail.html">
+            {% with messages = get_flashed_messages() %}
+              {% if messages %}
+                {% for message in messages %}
+                  <p style="color: #ff4d4d; font-size: 0.8rem; text-align: center; margin-bottom: 10px; font-weight: bold;">
+                    {{ message }}
+                  </p>
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+
+            <form class="auth-form" action="/admin" method="POST">
                 <div class="input-field">
-                    <input type="text" placeholder="USERNAME" required>
+                    <input type="text" name="username" placeholder="USERNAME" required>
                 </div>
 
                 <div class="input-field">
-                    <input type="password" placeholder="PASSWORD" required>
+                    <input type="password" name="password" placeholder="PASSWORD" required>
                 </div>
                 
-                <a href="#" class="forgot-link">Forgot Password?</a>
+                <a href="/admin/forgot-password" class="forgot-link">Forgot Password?</a>
 
                 <button type="submit" class="primary-btn">LOG-IN</button>
             </form>
