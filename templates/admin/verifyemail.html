@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Sambast | Verify Email</title>
-    <link rel="stylesheet" href="../../static/css/admin/verifyemail.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin/verifyemail.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body class="auth-page">
@@ -12,7 +12,7 @@
     <div class="mobile-container">
         <header class="header">
             <span class="logo">LOGO</span>
-            <a href="adminlogin.html" class="back-btn">
+            <a href="{{ url_for('admin_login') }}" class="back-btn">
                 <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M15 18l-6-6 6-6"/>
                 </svg>
@@ -20,29 +20,64 @@
         </header>
 
         <main class="auth-content">
-            <h1 class="main-title">VERIFY EMAIL</h1>
+    <h1 class="main-title">VERIFY EMAIL</h1>
 
-            <p class="instruction-text">
-                Please enter the code we just sent to:<br>
-                <span class="phone-number">juandelacruz@gmail.com</span>
-            </p>
+    {% if not otp_sent %}
+        <p class="instruction-text">
+            Enter your admin email to receive a verification code.
+        </p>
 
-            <form class="auth-form" action="createpass.html">
-                <div class="otp-container">
-                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
-                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
-                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
-                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
-                </div>
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <p style="color: #ff4d4d; font-size: 0.8rem; text-align: center; margin-bottom: 10px;">{{ message }}</p>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
 
-                <div class="resend-container">
-                    <p>Didn't received code?</p>
-                    <button type="button" class="resend-btn">Resend Code</button>
-                </div>
+        <form class="auth-form" action="{{ url_for('forgot_password') }}" method="POST">
+            <div class="input-group" style="margin-bottom: 20px;">
+                <input type="email" name="email" placeholder="admin@sambast.com" required 
+                       style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #ddd; font-family: 'Inter';">
+            </div>
+            <button type="submit" class="primary-btn">SEND OTP</button>
+        </form>
 
-                <button type="submit" class="primary-btn">VERIFY</button>
-            </form>
-        </main>
+    {% else %}
+        <p class="instruction-text">
+            Please enter the code we just sent to:<br>
+            <span class="phone-number">{{ session.get('reset_email', 'your email') }}</span>
+        </p>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <p style="color: #ff4d4d; font-size: 0.8rem; text-align: center; margin-bottom: 10px;">{{ message }}</p>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form class="auth-form" action="{{ url_for('verify_otp') }}" method="POST" id="otpForm">
+            <div class="otp-container">
+                <input type="text" class="otp-input" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                <input type="text" class="otp-input" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                <input type="text" class="otp-input" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                <input type="text" class="otp-input" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                <input type="text" class="otp-input" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                <input type="text" class="otp-input" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+            </div>
+            
+            <input type="hidden" name="otp" id="finalOtp">
+
+            <div class="resend-container">
+                <p>Didn't receive code?</p>
+                <a href="{{ url_for('forgot_password') }}" class="resend-btn" style="text-decoration: none; font-size: 0.8rem;">Resend Code</a>
+            </div>
+
+            <button type="submit" class="primary-btn">VERIFY</button>
+        </form>
+    {% endif %}
+</main>
 
         <footer class="auth-footer">
             <p style="font-size: 0.6rem; font-weight: 800; letter-spacing: 1px;">ORDER. TAP. DONE.</p>
@@ -50,19 +85,31 @@
     </div>
 
     <script>
-        // Auto-focus next input logic
-        const inputs = document.querySelectorAll('.otp-container input');
+        const inputs = document.querySelectorAll('.otp-input');
+        const finalOtpInput = document.getElementById('finalOtp');
+        const form = document.getElementById('otpForm');
+
+        // Auto-focus logic
         inputs.forEach((input, index) => {
             input.addEventListener('input', (e) => {
                 if (e.target.value.length === 1 && index < inputs.length - 1) {
                     inputs[index + 1].focus();
                 }
             });
+
             input.addEventListener('keydown', (e) => {
                 if (e.key === 'Backspace' && !e.target.value && index > 0) {
                     inputs[index - 1].focus();
                 }
             });
         });
+
+        // Combine inputs before submitting
+        form.addEventListener('submit', (e) => {
+            let fullCode = "";
+            inputs.forEach(input => fullCode += input.value);
+            finalOtpInput.value = fullCode;
+        });
     </script>
 </body>
+</html>

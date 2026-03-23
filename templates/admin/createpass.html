@@ -1,11 +1,10 @@
-<<<<<<< HEAD
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Sambast | Create New Password</title>
-    <link rel="stylesheet" href="../../static/css/admin/createpass.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin/createpass.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body class="auth-page">
@@ -13,7 +12,7 @@
     <div class="mobile-container">
         <header class="header">
             <span class="logo">LOGO</span>
-            <a href="verifyemail.html" class="back-btn">
+            <a href="{{ url_for('forgot_password') }}" class="back-btn">
                 <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M15 18l-6-6 6-6"/>
                 </svg>
@@ -23,18 +22,29 @@
         <main class="auth-content">
             <h1 class="main-title">CREATE NEW<br>PASSWORD</h1>
 
-            <form class="auth-form" action="adminlogin.html">
+            {% with messages = get_flashed_messages() %}
+              {% if messages %}
+                {% for message in messages %}
+                  <p style="color: #a6171c; font-size: 0.8rem; text-align: center; margin-bottom: 10px; font-weight: bold;">
+                    {{ message }}
+                  </p>
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+
+            <form class="auth-form" action="{{ url_for('reset_password') }}" method="POST">
+                
                 <div class="input-group">
                     <label>NEW PASSWORD</label>
                     <div class="input-field">
-                        <input type="password" required>
+                        <input type="password" name="password" required>
                     </div>
                 </div>
 
                 <div class="input-group">
                     <label>CONFIRM PASSWORD</label>
                     <div class="input-field">
-                        <input type="password" required>
+                        <input type="password" name="confirm_password" required>
                     </div>
                 </div>
 
@@ -48,56 +58,4 @@
     </div>
 
 </body>
-=======
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sambast | Create New Password</title>
-    <link rel="shortcut icon" type="image/png" href="../../static/image/logo.png">
-    <link rel="stylesheet" href="../../static/css/admin/createpass.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-</head>
-<body class="auth-page">
-
-    <div class="mobile-container">
-        <header class="header">
-            <img src="../../static/image/logo.png" alt="Logo" class="logo">
-            <a href="verifyemail.html" class="back-btn">
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M15 18l-6-6 6-6"/>
-                </svg>
-            </a>
-        </header>
-
-        <main class="auth-content">
-            <h1 class="main-title">CREATE NEW<br>PASSWORD</h1>
-
-            <form class="auth-form" action="adminlogin.html">
-                <div class="input-group">
-                    <label>NEW PASSWORD</label>
-                    <div class="input-field">
-                        <input type="password" required>
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <label>CONFIRM PASSWORD</label>
-                    <div class="input-field">
-                        <input type="password" required>
-                    </div>
-                </div>
-
-                <button type="submit" class="primary-btn">RESET PASSWORD</button>
-            </form>
-        </main>
-
-        <footer class="auth-footer">
-            <p style="font-size: 0.6rem; font-weight: 800; letter-spacing: 1px;">ORDER. TAP. DONE.</p>
-        </footer>
-    </div>
-
-</body>
->>>>>>> 63f72eb6a9a5fb57aefe979e3d77dd5008f3dbf9
 </html>

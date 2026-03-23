@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin/analytics.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body>
@@ -21,28 +22,15 @@
 
     <div class="sidebar" id="sidebar">
         <div class="close-btn" id="closeBtn">✕</div>
-
         <div class="sidebar-menu">
             <ul class="nav-links">
-    <li class="{{ 'active' if request.endpoint == 'admin_profile' }}">
-        <a href="{{ url_for('admin_profile') }}">PROFILE</a>
-    </li>
-    
-    <li class="{{ 'active' if request.endpoint == 'admin_dashboard' }}">
-        <a href="{{ url_for('admin_dashboard') }}">ANALYTICS</a>
-    </li>
-    <li class="{{ 'active' if request.endpoint == 'admin_orders' }}">
-        <a href="{{ url_for('admin_orders') }}">ORDERS</a>
-    </li>
-    <li class="{{ 'active' if request.endpoint == 'admin_inventory' }}">
-        <a href="{{ url_for('admin_inventory') }}">INVENTORY</a>
-    </li>
-    <li class="{{ 'active' if request.endpoint == 'admin_audit' }}">
-        <a href="{{ url_for('admin_audit') }}">AUDIT LOGS</a>
-    </li>
-</ul>
+                <li class="{{ 'active' if request.endpoint == 'admin_profile' }}"><a href="{{ url_for('admin_profile') }}">PROFILE</a></li>
+                <li class="{{ 'active' if request.endpoint == 'admin_analytics' }}"><a href="{{ url_for('admin_analytics') }}">ANALYTICS</a></li>
+                <li class="{{ 'active' if request.endpoint == 'admin_orders' }}"><a href="{{ url_for('admin_orders') }}">ORDERS</a></li>
+                <li class="{{ 'active' if request.endpoint == 'admin_inventory' }}"><a href="{{ url_for('admin_inventory') }}">INVENTORY</a></li>
+                <li class="{{ 'active' if request.endpoint == 'admin_audit' }}"><a href="{{ url_for('admin_audit') }}">AUDIT LOGS</a></li>
+            </ul>
         </div>
-
         <div class="logout-container">
             <a href="{{ url_for('admin_logout') }}" class="logout-btn">LOG-OUT</a>
         </div>
@@ -51,7 +39,7 @@
     <section class="analytics">
         <div class="analytics-header">
             <h1>ANALYTICS</h1>
-            <button class="analytics-btn">
+            <button class="analytics-btn" onclick="window.print()">
                 <svg class="download-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 3v12"></path>
                     <path d="M7 10l5 5 5-5"></path>
@@ -63,20 +51,20 @@
 
         <div class="card revenue-card">
             <div class="small-title">Total Revenue</div>
-            <div class="revenue-value">13,450</div>
+            <div class="revenue-value" id="total-revenue">₱0</div>
             <div class="small-text">From completed orders</div>
         </div>
 
         <div class="stats-row">
             <div class="card stat-card">
                 <div class="small-title">Total Orders</div>
-                <div class="big-number">57</div>
-                <div class="small-text">3 paid - 1 cancelled</div>
+                <div class="big-number" id="total-orders">0</div>
+                <div id="status-summary" class="small-text">Loading status...</div>
             </div>
 
             <div class="card stat-card">
                 <div class="small-title">Avg Order Value</div>
-                <div class="big-number">13,450</div>
+                <div class="big-number" id="avg-order-value">₱0</div>
                 <div class="small-text">Completed orders</div>
             </div>
         </div>
@@ -84,26 +72,21 @@
         <div class="card chart-card">
             <div class="small-title">Top Selling Products</div>
             <div class="chart-area">
-                <div class="pie"></div>
-                <ul class="legend">
-                    <li>Product name</li>
-                    <li>Product name</li>
-                    <li>Product name</li>
-                    <li>Product name</li>
-                </ul>
+                <canvas id="topProductsChart"></canvas>
+                <ul class="legend" id="products-legend">
+                    </ul>
             </div>
         </div>
 
         <div class="card stock-card">
             <div class="small-title">Low Stock Items</div>
-            <ul>
-                <li>3 &nbsp; Product name</li>
-                <li>3 &nbsp; Product name</li>
-                <li>3 &nbsp; Product name</li>
+            <ul id="low-stock-list">
+                <li>Check Inventory for details</li>
             </ul>
         </div>
     </section>
 
+    <script src="{{ url_for('static', filename='js/admin/inventory.js') }}"></script>
     <script src="{{ url_for('static', filename='js/admin/inventory.js') }}"></script>
     <script src="{{ url_for('static', filename='js/admin/analytics.js') }}"></script>
 </body>
