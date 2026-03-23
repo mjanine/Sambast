@@ -1,12 +1,14 @@
 import sqlite3
 import os
-from flask import Flask, render_template, g, request, session, redirect, url_for, flash
+# ADDED jsonify TO THIS LINE BELOW
+from flask import Flask, render_template, g, request, session, redirect, url_for, flash, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.secret_key = 'dev_key_for_session_management' 
 DATABASE = 'database.db'
+
 
 # --- CONFIGURATION: IMAGE UPLOADS ---
 UPLOAD_FOLDER = 'static/uploads'
@@ -224,15 +226,63 @@ def edit_product(product_id):
     db.commit()
     return redirect(url_for('admin_inventory'))
 
+@app.route('/admin/analytics-data')
+def admin_analytics_data():
+    db = get_db()
+    
+    # Using COALESCE ensures we return 0 if there are no completed orders yet
+    stats = db.execute('''
+        SELECT 
+            COALESCE(SUM(total_price), 0) as total_revenue,
+            COUNT(order_id) as total_orders
+        FROM orders 
+        WHERE status = 'Completed'
+    ''').fetchone()
+
+    status_counts = db.execute('''
+        SELECT status, COUNT(order_id) as count 
+        FROM orders 
+        GROUP BY status
+    ''').fetchall()
+
+    top_products = db.execute('''
+        SELECT p.name, SUM(oi.quantity) as total_sold
+        FROM order_items oi
+        JOIN products p ON oi.product_id = p.product_id
+        GROUP BY p.product_id
+        ORDER BY total_sold DESC
+        LIMIT 5
+    ''').fetchall()
+
+    return jsonify({
+        "summary": {
+            "revenue": stats['total_revenue'],
+            "orders": stats['total_orders']
+        },
+        "status_data": [dict(row) for row in status_counts],
+        "top_products": [dict(row) for row in top_products]
+    })
+
+@app.route('/admin/analytics')
+def admin_analytics():
+    return render_template('admin/analytics.html')
+
 @app.route('/admin/products/delete/<int:product_id>', methods=['POST'])
 def delete_product(product_id):
-    if 'admin_id' not in session: return redirect(url_for('admin_login'))
+    if 'admin_id' not in session: 
+        return redirect(url_for('admin_login'))
+    
     db = get_db()
     db.execute('DELETE FROM products WHERE product_id = ?', (product_id,))
+    
+    # This also adds a record to your Audit Logs!
     db.execute('INSERT INTO audit_logs (admin_id, action_text) VALUES (?, ?)', 
                (session['admin_id'], f"Deleted product ID: {product_id}"))
+    
     db.commit()
+    flash("Product deleted successfully.")
     return redirect(url_for('admin_inventory'))
+
 
 # --- AUTH FLOWS ---
 
@@ -250,33 +300,48 @@ def forgot_password():
         if admin:
             session['reset_email'] = email
             session['temp_otp'] = "123456" 
-            return redirect(url_for('verify_otp'))
+            # Change: pass otp_sent=True so the HTML shows the boxes
+            return render_template('admin/verifyemail.html', otp_sent=True)
         flash("Email not found.")
-    return render_template('admin/verifyemail.html')
+    # Change: pass otp_sent=False for the initial email entry
+    return render_template('admin/verifyemail.html', otp_sent=False)
 
-@app.route('/admin/verify-otp', methods=['GET', 'POST'])
+@app.route('/admin/verify-otp', methods=['POST'])
 def verify_otp():
-    if request.method == 'POST':
-        if request.form.get('otp') == session.get('temp_otp'):
-            return redirect(url_for('reset_password'))
-        flash("Invalid OTP")
-    return render_template('admin/verifyemail.html')
+    # Logic remains the same, but ensure we return the template on failure
+    if request.form.get('otp') == session.get('temp_otp'):
+        return redirect(url_for('reset_password'))
+    
+    flash("Invalid OTP")
+    return render_template('admin/verifyemail.html', otp_sent=True)
 
 @app.route('/admin/reset-password', methods=['GET', 'POST'])
 def reset_password():
     if request.method == 'POST':
         new_password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
+        
         if new_password != confirm_password:
             flash("Passwords do not match!")
             return render_template('admin/createpass.html')
+        
+        # 1. Hash the password
         hashed = generate_password_hash(new_password)
+        
+        # 2. Update Database
         db = get_db()
-        db.execute('UPDATE admin SET password_hash = ? WHERE email = ?', (hashed, session.get('reset_email')))
+        db.execute('UPDATE admin SET password_hash = ? WHERE email = ?', 
+                   (hashed, session.get('reset_email')))
         db.commit()
+        
+        # 3. Clean up session data
         session.pop('temp_otp', None)
+        session.pop('reset_email', None) 
+        
         flash("Password reset successful!")
         return redirect(url_for('admin_login'))
+    
+    # If GET request, just show the page
     return render_template('admin/createpass.html')
 
 @app.route('/admin/audit')
