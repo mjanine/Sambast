@@ -9,30 +9,46 @@ function renderHistory(orders) {
     }
 
     orders.forEach(order => {
-        order.items.forEach(item => {
-            const total = item.price_at_time * item.qty;
-            const card  = document.createElement('div');
-            card.className = 'history-card';
-            card.innerHTML = `
+        const card = document.createElement('div');
+        card.className = 'history-card';
+
+        // Create a sub-list for items
+        let itemsHtml = order.items.map(item => `
+            <div class="history-item">
                 <div class="item-img-placeholder">image</div>
-                <div class="order-info">
+                <div class="item-details">
                     <h2 class="product-name">${item.name}</h2>
-                    <p class="amount-label">Product Amount: ₱${item.price_at_time}</p>
+                    <p class="amount-label">Price: ₱${item.price_at_time}</p>
                     <p class="qty-summary">Qty: ${item.qty}</p>
-                    <p class="total-amount">Total Amount: ₱${total}</p>
-                    <p class="order-no">Order no: ${order.order_no}</p>
-                    <p class="order-status">Status: ${order.status}</p>
-                    <button class="buy-again-btn" onclick="buyAgain('${order.order_no}', ${JSON.stringify(item).replace(/'/g, "\\'")})">BUY AGAIN</button>
                 </div>
-            `;
-            container.appendChild(card);
-        });
+                <button class="buy-again-btn" onclick='buyAgain(${JSON.stringify(item)})'>BUY AGAIN</button>
+            </div>
+        `).join('');
+
+        card.innerHTML = `
+            <div class="order-header">
+                <h3>Order: ${order.order_no}</h3>
+                <span class="order-status">${order.status}</span>
+            </div>
+            <div class="order-body">
+                ${itemsHtml}
+            </div>
+            <div class="order-footer">
+                <span>${new Date(order.created_at).toLocaleString()}</span>
+                <strong>Total: ₱${order.total_price}</strong>
+            </div>
+        `;
+        container.appendChild(card);
     });
 }
 
-function buyAgain(orderNo, item) {
+function buyAgain(item) {
+    if (!item.product_id) {
+        alert("Cannot re-order this item as its ID is missing.");
+        return;
+    }
     const itemToBuy = [{
-        product_id: null,  // product_id not needed for display
+        product_id: item.product_id,
         name : item.name,
         price: item.price_at_time,
         qty  : item.qty

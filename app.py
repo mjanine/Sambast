@@ -533,16 +533,12 @@ def place_order():
         order_no = generate_order_no()
 
     # Insert the order
-    db.execute(
+    cursor = db.execute(
         'INSERT INTO orders (order_no, user_id, total_price, status) VALUES (?, ?, ?, ?)',
         (order_no, session['user_id'], total, 'Pending')
     )
-    db.commit()
-
-    order = db.execute(
-        'SELECT order_id FROM orders WHERE order_no = ?', (order_no,)
-    ).fetchone()
-    order_id = order['order_id']
+    
+    order_id = cursor.lastrowid
 
     # Insert each line item
     for item in items:
@@ -575,18 +571,18 @@ def latest_order_status():
     if 'user_id' not in session:
         return {'error': 'Unauthorized'}, 401
 
-    order_no = session.get('latest_order_no')
-    if not order_no:
-        return {'error': 'No active order.'}, 404
-
     db    = get_db()
     order = db.execute(
-        'SELECT order_no, status, total_price FROM orders WHERE order_no = ?',
-        (order_no,)
+        '''SELECT order_no, status, total_price 
+           FROM orders 
+           WHERE user_id = ? AND status NOT IN ('Completed', 'Cancelled')
+           ORDER BY created_at DESC 
+           LIMIT 1''',
+        (session['user_id'],)
     ).fetchone()
 
     if not order:
-        return {'error': 'Order not found.'}, 404
+        return {'error': 'No active order.'}, 404
 
     return {
         'order_no'    : order['order_no'],
@@ -613,7 +609,7 @@ def order_history():
     result = []
     for o in orders:
         items = db.execute(
-            '''SELECT oi.quantity, oi.price_at_time, p.name, p.image_filename
+            '''SELECT oi.quantity, oi.price_at_time, p.name, p.image_filename, p.product_id
                FROM order_items oi
                LEFT JOIN products p ON oi.product_id = p.product_id
                WHERE oi.order_id = ?''',
@@ -626,6 +622,7 @@ def order_history():
             'total_price': o['total_price'],
             'created_at' : o['created_at'],
             'items'      : [{
+                'product_id'    : i['product_id'],
                 'name'          : i['name'],
                 'qty'           : i['quantity'],
                 'price_at_time' : i['price_at_time'],
