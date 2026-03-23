@@ -18,6 +18,16 @@ body {
     font-weight:bold;
 }
 
+<<<<<<< HEAD
+=======
+.logo {
+    height: 40px;
+    width: auto;
+    display: block;  
+    object-fit: contain;  
+}
+
+>>>>>>> 63f72eb6a9a5fb57aefe979e3d77dd5008f3dbf9
 .menu{
     font-size:22px;
     cursor:pointer;

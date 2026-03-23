@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 :root {
     --bg-white: #ffffff;
     --input-fill: #E0E0E0; 
@@ -111,4 +112,120 @@ body, html {
     padding-bottom: 30px;
     font-size: 0.85rem;
     font-weight: 800; /* Bolded to match 'ORDER. TAP. DONE.' */
+=======
+:root {
+    --bg-white: #ffffff;
+    --input-fill: #E0E0E0; 
+    --btn-black: #000000;
+    --accent-green: #39FF14;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body, html {
+    height: 100%;
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: #d6d0c5;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+}
+
+.mobile-container {
+    max-width: 430px;
+    margin: 0 auto;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: env(safe-area-inset-top, 20px) 50px env(safe-area-inset-bottom, 30px);
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 20px;
+    height: 60px;
+}
+
+.logo {
+    height: 40px;
+    width: auto;
+    display: block;  
+    object-fit: contain;  
+}
+
+.auth-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center; 
+    align-items: center;
+    margin-top: -10%; 
+}
+
+/* ADMIN TITLE STYLING */
+.welcome-group {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.welcome-sub {
+    font-size: 1.2rem;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: #1A323E;
+}
+
+.admin-name {
+    font-size: 3.5rem;
+    font-weight: 900;
+    line-height: 0.9;
+    letter-spacing: -2px;
+    color: #1A323E;
+
+}
+
+.auth-form { width: 100%; }
+
+.input-field { margin-bottom: 14px; }
+
+.input-field input {
+    width: 100%;
+    padding: 13px 25px; 
+    border-radius: 50px;
+    border: 1px solid #000;
+    background-color: #F9F8F6;
+    font-size: 0.85rem;
+    font-weight: 600;
+    outline: none;
+}
+
+.forgot-link {
+    display: block;
+    margin-bottom: 30px;
+    margin-left: 20px;
+    font-size: 0.75rem;
+    color: #a6171c;
+    text-decoration: none;
+    font-weight: 700;
+}
+
+.primary-btn {
+    width: 100%;
+    padding: 14px;
+    background-color: #f1c045;
+    color: white;
+    border: none;
+    border-radius: 50px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-top: 10px;
+}
+
+.auth-footer {
+    text-align: center;
+    padding-bottom: 30px;
+    font-size: 0.85rem;
+    font-weight: 800; /* Bolded to match 'ORDER. TAP. DONE.' */
+>>>>>>> 63f72eb6a9a5fb57aefe979e3d77dd5008f3dbf9
 }
