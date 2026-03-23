@@ -4,42 +4,48 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sambast | Analytics</title>
-    <link rel="shortcut icon" type="image/png" href="../../static/image/logo.png">
+    <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='image/logo.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../../static/css/admin/analytics.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin/analytics.css') }}">
 </head>
 
 <body>
 
     <header class="header">
-        <img src="../../static/image/logo.png" alt="Logo" class="logo">
+        <img src="{{ url_for('static', filename='image/logo.png') }}" alt="Logo" class="logo">
         <div class="menu" id="menuBtn">&#9776;</div>
     </header>
     
-
-    <!-- Overlay -->
     <div id="overlay"></div>
 
-    <!-- Sidebar -->
     <div class="sidebar" id="sidebar">
 
         <div class="close-btn" id="closeBtn">✕</div>
 
         <div class="sidebar-menu">
             <ul class="nav-links">
-                <li><a href="profile.html">PROFILE</a></li>
-                <li><a href="orders.html">ORDERS</a></li>
-                <li><a href="inventory.html">INVENTORY</a></li>
-                <li><a href="audit.html">AUDIT LOGS</a></li>
-                <li class="active"><a href="analytics.html">ANALYTICS</a></li>
+                <li class="{{ 'active' if request.endpoint == 'admin_profile' }}">
+                    <a href="{{ url_for('admin_profile') }}">PROFILE</a>
+                </li>
+                <li class="{{ 'active' if request.endpoint == 'admin_dashboard' }}">
+                    <a href="{{ url_for('admin_dashboard') }}">ANALYTICS</a>
+                </li>
+                <li class="{{ 'active' if request.endpoint == 'admin_orders' }}">
+                    <a href="{{ url_for('admin_orders') }}">ORDERS</a>
+                </li>
+                <li class="{{ 'active' if request.endpoint == 'admin_inventory' }}">
+                    <a href="{{ url_for('admin_inventory') }}">INVENTORY</a>
+                </li>
+                <li class="{{ 'active' if request.endpoint == 'admin_audit' }}">
+                    <a href="{{ url_for('admin_audit') }}">AUDIT LOGS</a>
+                </li>
             </ul>
         </div>
 
-        <!-- LOGOUT BUTTON -->
         <div class="logout-container">
-            <a href="logout.html" class="logout-btn">LOG-OUT</a>
+            <a href="{{ url_for('admin_logout') }}" class="logout-btn">LOG-OUT</a>
         </div>
 
     </div>
@@ -55,18 +61,16 @@
                     <path d="M7 10l5 5 5-5"></path>
                     <path d="M5 21h14"></path>
                 </svg>
-                ANALYTICS
+                EXPORT DATA
             </button>
         </div>
 
-        <!-- TOTAL REVENUE CARD -->
         <div class="card revenue-card">
             <div class="small-title">Total Revenue</div>
             <div class="revenue-value">13,450</div>
             <div class="small-text">From completed orders</div>
         </div>
 
-        <!-- TWO SMALL CARDS -->
         <div class="stats-row">
             <div class="card stat-card">
                 <div class="small-title">Total Orders</div>
@@ -81,7 +85,6 @@
             </div>
         </div>
 
-        <!-- TOP SELLING PRODUCTS -->
         <div class="card chart-card">
 
             <div class="small-title">Top Selling Products</div>
@@ -97,10 +100,10 @@
 
         </div>
 
-        <!-- LOW STOCK ITEMS -->
         <div class="card stock-card">
             <div class="small-title">Low Stock Items</div>
             <ul>
+                <li>3 &nbsp; Product name</li>
                 <li>3 &nbsp; Product name</li>
                 <li>3 &nbsp; Product name</li>
                 <li>3 &nbsp; Product name</li>
@@ -108,7 +111,8 @@
         </div>
     </section>
 
-    <script src="../../static/js/admin/analytics.js"></script>
+    <script src="{{ url_for('static', filename='js/admin/inventory.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/admin/analytics.js') }}"></script>
 
 </body>
 </html>

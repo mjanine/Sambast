@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -68,3 +69,73 @@
     </script>
 </body>
 </html>
+=======
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sambast | Verify Email</title>
+    <link rel="stylesheet" href="../../static/css/admin/verifyemail.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="auth-page">
+
+    <div class="mobile-container">
+        <header class="header">
+            <span class="logo">LOGO</span>
+            <a href="adminlogin.html" class="back-btn">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M15 18l-6-6 6-6"/>
+                </svg>
+            </a>
+        </header>
+
+        <main class="auth-content">
+            <h1 class="main-title">VERIFY EMAIL</h1>
+
+            <p class="instruction-text">
+                Please enter the code we just sent to:<br>
+                <span class="phone-number">juandelacruz@gmail.com</span>
+            </p>
+
+            <form class="auth-form" action="createpass.html">
+                <div class="otp-container">
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                </div>
+
+                <div class="resend-container">
+                    <p>Didn't received code?</p>
+                    <button type="button" class="resend-btn">Resend Code</button>
+                </div>
+
+                <button type="submit" class="primary-btn">VERIFY</button>
+            </form>
+        </main>
+
+        <footer class="auth-footer">
+            <p style="font-size: 0.6rem; font-weight: 800; letter-spacing: 1px;">ORDER. TAP. DONE.</p>
+        </footer>
+    </div>
+
+    <script>
+        // Auto-focus next input logic
+        const inputs = document.querySelectorAll('.otp-container input');
+        inputs.forEach((input, index) => {
+            input.addEventListener('input', (e) => {
+                if (e.target.value.length === 1 && index < inputs.length - 1) {
+                    inputs[index + 1].focus();
+                }
+            });
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && !e.target.value && index > 0) {
+                    inputs[index - 1].focus();
+                }
+            });
+        });
+    </script>
+</body>
+>>>>>>> c92ec81d19473cb1f8d064c9b4b97570ae5d9cc4

@@ -4,74 +4,76 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sambast | Profile</title>
-    <link rel="shortcut icon" type="image/png" href="../../static/image/logo.png">
+    <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='image/logo.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../../static/css/admin/profile.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin/profile.css') }}">
 </head>
 
 <body>
 
 <header class="header">
-    <img src="../../static/image/logo.png" alt="Logo" class="logo">
+    <img src="{{ url_for('static', filename='image/logo.png') }}" alt="Logo" class="logo">
     <div class="menu" id="menuBtn">&#9776;</div>
 </header>
 
-<!-- Overlay -->
 <div id="overlay"></div>
 
-<!-- Sidebar -->
 <div class="sidebar" id="sidebar">
-
     <div class="close-btn" id="closeBtn">✕</div>
 
     <div class="sidebar-menu">
         <ul class="nav-links">
-            <li class="active"><a href="profile.html">PROFILE</a></li>
-            <li><a href="orders.html">ORDERS</a></li>
-            <li><a href="inventory.html">INVENTORY</a></li>
-            <li><a href="audit-logs.html">AUDIT LOGS</a></li>
-            <li><a href="analytics.html">ANALYTICS</a></li>
+            <li class="{{ 'active' if request.endpoint == 'admin_profile' }}">
+                <a href="{{ url_for('admin_profile') }}">PROFILE</a>
+            </li>
+            <li class="{{ 'active' if request.endpoint == 'admin_dashboard' }}">
+                <a href="{{ url_for('admin_dashboard') }}">ANALYTICS</a>
+            </li>
+            <li class="{{ 'active' if request.endpoint == 'admin_orders' }}">
+                <a href="{{ url_for('admin_orders') }}">ORDERS</a>
+            </li>
+            <li class="{{ 'active' if request.endpoint == 'admin_inventory' }}">
+                <a href="{{ url_for('admin_inventory') }}">INVENTORY</a>
+            </li>
+            <li class="{{ 'active' if request.endpoint == 'admin_audit' }}">
+                <a href="{{ url_for('admin_audit') }}">AUDIT LOGS</a>
+            </li>
         </ul>
     </div>
 
-    <!-- LOGOUT BUTTON -->
     <div class="logout-container">
-        <a href="logout.html" class="logout-btn">LOG-OUT</a>
+        <a href="{{ url_for('admin_logout') }}" class="logout-btn">LOG-OUT</a>
     </div>
-
 </div>
 
 <section class="profile">
+    <h1>PROFILE</h1>
 
-<h1>PROFILE</h1>
-
-<main class="profile-content">
-    <div class="input-group">
-        <label>NAME</label>
-        <div class="static-field">JUAN DELA CRUZ</div>
-    </div>
-
-    <div class="input-group">
-        <label>E-MAIL</label>
-        <div class="editable-field">
-            <span>juandelacruz@gmail.com</span>
-            <button class="edit-icon">✎</button>
+    <main class="profile-content">
+        <div class="input-group">
+            <label>NAME</label>
+            <div class="static-field">{{ admin.username }}</div>
         </div>
-    </div>
 
-    <div class="nav-menu">
-        <button class="menu-btn" onclick="location.href='verifyemail.html'">
-            Change Password
-        </button>
+        <div class="input-group">
+            <label>E-MAIL</label>
+            <div class="editable-field">
+                <span id="adminEmail">{{ admin.email }}</span>
+                <button class="edit-icon">✎</button>
+            </div>
+        </div>
 
-    </div>
-</main>
-
+        <div class="nav-menu">
+            <a href="{{ url_for('forgot_password') }}" class="menu-btn" style="text-decoration: none; display: inline-block; text-align: center; line-height: 40px;">
+                Change Password
+            </a>
+        </div>
+    </main>
 </section>
 
-<script src="../../static/js/admin/profile.js"></script>
+<script src="{{ url_for('static', filename='js/admin/profile.js') }}"></script>
 
 </body>
 </html>

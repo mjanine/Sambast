@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sambast | Audit</title>
+    <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='image/logo.png') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin/inventory.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin/audit-logs.css') }}">
+</head>
+
+<body>
+    <header class="header">
+        <img src="{{ url_for('static', filename='image/logo.png') }}" alt="Logo" class="logo">
+        <div class="menu" id="menuBtn">&#9776;</div>
+    </header>
+
+    <div id="overlay"></div>
+
+    <div class="sidebar" id="sidebar">
+        <div class="close-btn" id="closeBtn">✕</div>
+        <div class="sidebar-menu">
+            <ul class="nav-links">
+               <ul class="nav-links">
+    <li class="{{ 'active' if request.endpoint == 'admin_profile' }}">
+        <a href="{{ url_for('admin_profile') }}">PROFILE</a>
+    </li>
+    
+    <li class="{{ 'active' if request.endpoint == 'admin_dashboard' }}">
+        <a href="{{ url_for('admin_dashboard') }}">ANALYTICS</a>
+    </li>
+    <li class="{{ 'active' if request.endpoint == 'admin_orders' }}">
+        <a href="{{ url_for('admin_orders') }}">ORDERS</a>
+    </li>
+    <li class="{{ 'active' if request.endpoint == 'admin_inventory' }}">
+        <a href="{{ url_for('admin_inventory') }}">INVENTORY</a>
+    </li>
+    <li class="{{ 'active' if request.endpoint == 'admin_audit' }}">
+        <a href="{{ url_for('admin_audit') }}">AUDIT LOGS</a>
+    </li>
+</ul>
+        </div>
+
+        <div class="logout-container">
+            <a href="{{ url_for('admin_logout') }}" class="logout-btn">LOG-OUT</a>
+        </div>
+    </div>
+
+    <section class="audit">
+        <div class="audit-header">
+            <h1>AUDIT LOGS</h1>
+            <button class="audit-btn">
+                <svg class="download-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 3v12"></path>
+                    <path d="M7 10l5 5 5-5"></path>
+                    <path d="M5 21h14"></path>
+                </svg>
+                DOWNLOAD CSV
+            </button>
+        </div>
+
+        <div class="search-box">
+            <input type="text" id="auditSearch" placeholder="Search Logs...">
+            <svg class="search-mag" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="m21 21-4.3-4.3"/>
+            </svg>
+        </div>
+
+        <div id="auditContainer">
+            {% for log in logs %}
+            <div class="audit-card">
+                <div class="card-header">
+                    <strong>{{ log.username }}</strong>
+                    <span class="date">{{ log.timestamp }}</span>
+                </div>
+
+                <div class="card-body">
+                    <div class="action-text">{{ log.action_text }}</div>
+                </div>
+            </div>
+            {% else %}
+            <div class="no-logs" style="text-align: center; margin-top: 50px;">
+                <p>No activity records found.</p>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <script src="{{ url_for('static', filename='js/admin/inventory.js') }}"></script>
+</body>
+</html>

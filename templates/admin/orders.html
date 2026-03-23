@@ -4,42 +4,48 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sambast | Orders</title>
-    <link rel="shortcut icon" type="image/png" href="../../static/image/logo.png">
+    <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='image/logo.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../../static/css/admin/orders.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin/orders.css') }}">
 </head>
 
 <body>
 
     <header class="header">
-        <img src="../../static/image/logo.png" alt="Logo" class="logo">
+        <img src="{{ url_for('static', filename='image/logo.png') }}" alt="Logo" class="logo">
         <div class="menu" id="menuBtn">&#9776;</div>
     </header>
 
-    <!-- Overlay -->
     <div id="overlay"></div>
 
-    <!-- Sidebar -->
     <div class="sidebar" id="sidebar">
 
         <div class="close-btn" id="closeBtn">✕</div>
 
-        <!-- Wrap menu links in a scrollable container -->
         <div class="sidebar-menu">
             <ul class="nav-links">
-                <li><a href="profile.html">PROFILE</a></li>
-                <li class="active"><a href="orders.html">ORDERS</a></li>
-                <li><a href="inventory.html">INVENTORY</a></li>
-                <li><a href="audit-logs.html">AUDIT LOGS</a></li>
-                <li><a href="analytics.html">ANALYTICS</a></li>
+                <li class="{{ 'active' if request.endpoint == 'admin_profile' }}">
+                    <a href="{{ url_for('admin_profile') }}">PROFILE</a>
+                </li>
+                <li class="{{ 'active' if request.endpoint == 'admin_dashboard' }}">
+                    <a href="{{ url_for('admin_dashboard') }}">ANALYTICS</a>
+                </li>
+                <li class="{{ 'active' if request.endpoint == 'admin_orders' }}">
+                    <a href="{{ url_for('admin_orders') }}">ORDERS</a>
+                </li>
+                <li class="{{ 'active' if request.endpoint == 'admin_inventory' }}">
+                    <a href="{{ url_for('admin_inventory') }}">INVENTORY</a>
+                </li>
+                <li class="{{ 'active' if request.endpoint == 'admin_audit' }}">
+                    <a href="{{ url_for('admin_audit') }}">AUDIT LOGS</a>
+                </li>
             </ul>
         </div>
 
-        <!-- LOGOUT BUTTON -->
         <div class="logout-container">
-            <a href="logout.html" class="logout-btn">LOG-OUT</a>
+            <a href="{{ url_for('admin_logout') }}" class="logout-btn">LOG-OUT</a>
         </div>
 
     </div>
@@ -49,82 +55,62 @@
         <h1>ORDERS</h1>
 
         <div class="tabs">
-            <button type="button" class="tab active" data-filter="all">All</button>
-            <button type="button" class="tab" data-filter="pending">Pending <span class="count"></span></button>
-            <button type="button" class="tab" data-filter="processing">Processing <span class="count"></span></button>
-            <button type="button" class="tab" data-filter="ready">Ready for pick-up <span class="count"></span></button>
-            <button type="button" class="tab" data-filter="completed">Completed <span class="count"></span></button>
-            <button type="button" class="tab" data-filter="cancelled">Cancelled <span class="count"></span></button>
+            <a href="{{ url_for('admin_orders') }}" class="tab {% if not active_filter %}active{% endif %}">All</a>
+            <a href="{{ url_for('admin_orders', status='Pending') }}" class="tab {% if active_filter == 'Pending' %}active{% endif %}">Pending</a>
+            <a href="{{ url_for('admin_orders', status='Processing') }}" class="tab {% if active_filter == 'Processing' %}active{% endif %}">Processing</a>
+            <a href="{{ url_for('admin_orders', status='Ready') }}" class="tab {% if active_filter == 'Ready' %}active{% endif %}">Ready for pick-up</a>
+            <a href="{{ url_for('admin_orders', status='Completed') }}" class="tab {% if active_filter == 'Completed' %}active{% endif %}">Completed</a>
+            <a href="{{ url_for('admin_orders', status='Cancelled') }}" class="tab {% if active_filter == 'Cancelled' %}active{% endif %}">Cancelled</a>
         </div>
 
-        <!-- ORDER CARDS -->
-        <div class="order-card" data-status="pending">
+        {% for order in orders %}
+        <div class="order-card" data-status="{{ order['status']|lower }}">
             <div class="order-header">
                 <div>
-                    <strong>ORDER NO. 000</strong>
-                    <div class="customer">Juan Dela Cruz - 09123456789</div>
+                    <strong>ORDER NO. {{ order['order_no'] }}</strong>
+                    <div class="customer">Customer ID: {{ order['user_id'] or 'Guest' }}</div>
                 </div>
                 <div class="price">
-                    ₱ 4734
-                    <span>Cash on pick up</span>
+                    ₱ {{ order['total_price'] }}
+                    <span>{{ order['status'] }}</span>
                 </div>
             </div>
             <hr>
+            
             <div class="products">
                 <div>Product name 10kg × 1 <span>₱ 1234</span></div>
                 <div>Product name 5kg × 3 <span>₱ 3000</span></div>
-                <div>Product name 2kg × 5 <span>₱ 500</span></div>
             </div>
+            
             <div class="actions">
-                <button type="button" class="primary">Mark as Processing</button>
-                <button type="button" class="secondary">Cancel</button>
-            </div>
-        </div>
+                <form action="{{ url_for('update_order_status', order_id=order['order_id']) }}" method="POST" style="display:inline;">
+                    {% if order['status'] == 'Pending' %}
+                        <input type="hidden" name="status" value="Processing">
+                        <button type="submit" class="primary">Mark as Processing</button>
+                    {% elif order['status'] == 'Processing' %}
+                        <input type="hidden" name="status" value="Ready">
+                        <button type="submit" class="primary">Mark as Ready</button>
+                    {% elif order['status'] == 'Ready' %}
+                        <input type="hidden" name="status" value="Completed">
+                        <button type="submit" class="primary">Complete Order</button>
+                    {% endif %}
+                </form>
 
-        <div class="order-card" data-status="processing">
-            <div class="order-header">
-                <div>
-                    <strong>ORDER NO. 001</strong>
-                    <div class="customer">Juan Dela Cruz - 09123456789</div>
-                </div>
-                <div class="price">
-                    ₱ 4734
-                    <span>GCash</span>
-                </div>
-            </div>
-            <hr>
-            <div class="products">
-                <div>Product name 10kg × 1 <span>₱ 1234</span></div>
-                <div>Product name 5kg × 3 <span>₱ 3000</span></div>
-                <div>Product name 2kg × 5 <span>₱ 500</span></div>
-            </div>
-            <div class="actions">
-                <button type="button" class="primary">Mark as Ready for pick up</button>
-                <button type="button" class="secondary">Cancel</button>
+                {% if order['status'] not in ['Completed', 'Cancelled'] %}
+                <form action="{{ url_for('cancel_order', order_id=order['order_id']) }}" method="POST" style="display:inline;">
+                    <button type="submit" class="secondary">Cancel</button>
+                </form>
+                {% endif %}
             </div>
         </div>
-
-        <div class="order-card" data-status="cancelled">
-            <div class="order-header">
-                <div>
-                    <strong>ORDER NO. 002</strong>
-                    <div class="customer">Juan Dela Cruz - 09123456789</div>
-                </div>
-                <div class="price">
-                    ₱ 4734
-                    <span>Cash on pick up</span>
-                </div>
-            </div>
-            <hr>
-            <div class="products">
-                <div>Product name 10kg × 1 <span>₱ 1234</span></div>
-                <div>Product name 5kg × 3 <span>₱ 3000</span></div>
-                <div>Product name 2kg × 5 <span>₱ 500</span></div>
-            </div>
+        {% else %}
+        <div class="no-orders">
+            <p style="text-align: center; margin-top: 20px;">No orders found in this category.</p>
         </div>
+        {% endfor %}
 
     </section>
 
-    <script src="../../static/js/admin/orders.js"></script>
+    <script src="{{ url_for('static', filename='js/admin/orders.js') }}"></script>
 </body>
 </html>

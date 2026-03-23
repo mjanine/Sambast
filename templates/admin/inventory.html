@@ -4,41 +4,49 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sambast | Inventory</title>
-    <link rel="shortcut icon" type="image/png" href="../../static/image/logo.png">
+    <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='image/logo.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../../static/css/admin/inventory.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin/inventory.css') }}">
 </head>
 
 <body>
 
     <header class="header">
-        <img src="../../static/image/logo.png" alt="Logo" class="logo">
+        <img src="{{ url_for('static', filename='image/logo.png') }}" alt="Logo" class="logo">
         <div class="menu" id="menuBtn">&#9776;</div>
     </header>
 
-    <!-- Overlay -->
     <div id="overlay"></div>
 
-    <!-- Sidebar -->
     <div class="sidebar" id="sidebar">
 
         <div class="close-btn" id="closeBtn">✕</div>
 
         <div class="sidebar-menu">
             <ul class="nav-links">
-                <li><a href="profile.html">PROFILE</a></li>
-                <li><a href="orders.html">ORDERS</a></li>
-                <li class="active"><a href="inventory.html">INVENTORY</a></li>
-                <li><a href="audit-logs.html">AUDIT LOGS</a></li>
-                <li><a href="analytics.html">ANALYTICS</a></li>
+                <li class="{{ 'active' if request.endpoint == 'admin_profile' }}">
+                    <a href="{{ url_for('admin_profile') }}">PROFILE</a>
+                </li>
+                
+                <li class="{{ 'active' if request.endpoint == 'admin_dashboard' }}">
+                    <a href="{{ url_for('admin_dashboard') }}">ANALYTICS</a>
+                </li>
+                <li class="{{ 'active' if request.endpoint == 'admin_orders' }}">
+                    <a href="{{ url_for('admin_orders') }}">ORDERS</a>
+                </li>
+                <li class="{{ 'active' if request.endpoint == 'admin_inventory' }}">
+                    <a href="{{ url_for('admin_inventory') }}">INVENTORY</a>
+                </li>
+                <li class="{{ 'active' if request.endpoint == 'admin_audit' }}">
+                    <a href="{{ url_for('admin_audit') }}">AUDIT LOGS</a>
+                </li>
             </ul>
         </div>
 
-        <!-- LOGOUT BUTTON -->
         <div class="logout-container">
-            <a href="logout.html" class="logout-btn">LOG-OUT</a>
+            <a href="{{ url_for('admin_logout') }}" class="logout-btn">LOG-OUT</a>
         </div>
 
     </div>
@@ -50,132 +58,106 @@
             <button class="add-btn" id="addProductBtn">+ Add Product</button>
         </div>
 
-        <!-- SEARCH BAR -->
         <div class="search-box">
-            <input type="text" placeholder="Search Product">
-            
+            <input type="text" id="inventorySearch" placeholder="Search Product">
             <svg class="search-mag" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="11" cy="11" r="8"/>
                 <path d="m21 21-4.3-4.3"/>
             </svg>
         </div>
 
-        <!-- INVENTORY CARDS -->
-        <div class="inventory-card">
-            <div class="card-header">
-                <strong>PRODUCT NAME</strong>
-                <span class="icons">
-                    <button class="edit">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 20h9"/>
-                            <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
-                        </svg>
-                    </button>
+        <div id="inventoryContainer">
+            {% for product in products %}
+            <div class="inventory-card" data-name="{{ product['name']|lower }}">
+                <div class="card-header">
+                    <strong>{{ product['name'] }}</strong>
+                    <span class="icons">
+                        <button class="edit" onclick="openEditModal('{{ product.product_id }}', '{{ product.name }}', '{{ product.price }}', '{{ product.category }}', '{{ product.description }}', '{{ product.stock_status }}')">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 20h9"/>
+                                <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+                            </svg>
+                        </button>
 
-                    <button class="delete">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="3 6 5 6 21 6"/>
-                            <path d="M19 6l-1 14H6L5 6"/>
-                            <path d="M10 11v6"/>
-                            <path d="M14 11v6"/>
-                            <path d="M9 6V4h6v2"/>
-                        </svg>
-                    </button>
-                </span>
-            </div>
+                        <form action="{{ url_for('delete_product', product_id=product['product_id']) }}" method="POST" style="display:inline;">
+                            <button type="submit" class="delete" onclick="return confirm('Delete this product?')">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6l-1 14H6L5 6"/>
+                                    <path d="M10 11v6"/>
+                                    <path d="M14 11v6"/>
+                                    <path d="M9 6V4h6v2"/>
+                                </svg>
+                            </button>
+                        </form>
+                    </span>
+                </div>
 
-            <div class="card-body">
-                <div>CATEGORY</div>
-                <div>STOCK</div>
-                <div>RESERVED</div>
-                <div>AVAILABLE</div>
-                <div>PRICE</div>
+                <div class="card-body">
+                    {% if product['image_filename'] %}
+                        <img src="{{ url_for('static', filename='uploads/' + product['image_filename']) }}" alt="Product" class="prod-img-small" style="max-width: 50px; display: block; margin-bottom: 10px;">
+                    {% endif %}
+                    <div><strong>CATEGORY:</strong> {{ product['category'] }}</div>
+                    <div><strong>PRICE:</strong> ₱{{ product['price'] }}</div>
+                    <div><strong>STATUS:</strong> {{ 'Available' if product['stock_status'] == 1 else 'Out of Stock' }}</div>
+                </div>
             </div>
+            {% endfor %}
         </div>
-
-        <div class="inventory-card">
-            <div class="card-header">
-                <strong>PRODUCT NAME</strong>
-                <span class="icons">
-                    <button class="edit">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 20h9"/>
-                            <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
-                        </svg>
-                    </button>
-
-                    <button class="delete">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="3 6 5 6 21 6"/>
-                            <path d="M19 6l-1 14H6L5 6"/>
-                            <path d="M10 11v6"/>
-                            <path d="M14 11v6"/>
-                            <path d="M9 6V4h6v2"/>
-                        </svg>
-                    </button>
-                </span>
-            </div>
-
-            <div class="card-body">
-                <div>CATEGORY</div>
-                <div>STOCK</div>
-                <div>RESERVED</div>
-                <div>AVAILABLE</div>
-                <div>PRICE</div>
-            </div>
-        </div>
-
     </section>
 
-    <!-- ADD PRODUCT MODAL -->
     <div class="modal" id="addProductModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Add Product</h2>
+                <h2 id="modalTitle">Add Product</h2>
                 <span class="close" id="closeModal">✕</span>
             </div>
 
-            <div class="modal-body">
-
-                <label>Product Image</label>
-
-                <div class="image-upload">
-                    <input type="file" id="productImage" accept="image/*">
-                    <div class="image-preview" id="imagePreview">
-                        <span>Upload Image</span>
+            <form id="productForm" action="{{ url_for('add_product') }}" method="POST" enctype="multipart/form-data">
+                <div class="modal-body">
+                    
+                    <label>Product Image</label>
+                    <div class="image-upload-container">
+                        <div id="imagePreview" class="image-preview-box">
+                            <span>Upload Image</span>
+                        </div>
+                        <input type="file" name="image" id="productImage" accept="image/*">
                     </div>
+                    
+                    <label>Product Name</label>
+                    <input type="text" name="name" id="formName" placeholder="Enter product name" required>
+
+                    <label>Category</label>
+                    <select name="category" id="formCategory">
+                        <option value="Feeds">Feeds</option>
+                        <option value="Supplies">Supplies</option>
+                        <option value="Medicine">Medicine</option>
+                    </select>
+
+                    <div class="flex-row">
+                        <div>
+                            <label>Price</label>
+                            <input type="number" step="0.01" name="price" id="formPrice" placeholder="0.00" required>
+                        </div>
+
+                        <div>
+                            <label>Stock Status</label>
+                            <select name="stock_status" id="formStock">
+                                <option value="1">Available</option>
+                                <option value="0">Out of Stock</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <label>Description</label>
+                    <textarea name="description" id="formDescription" placeholder="Product details..."></textarea>
+
+                    <button type="submit" class="submit-btn" id="submitBtn">Save Product</button>
                 </div>
-                
-                <label>Product Name</label>
-                <input type="text" placeholder="Enter product name">
-
-                <label>Category</label>
-                <select>
-                    <option>Select Category</option>
-                    <option>Category 1</option>
-                    <option>Category 2</option>
-                </select>
-
-                <div class="flex-row">
-                    <div>
-                        <label>Price</label>
-                        <input type="text" placeholder="Price">
-                    </div>
-
-                    <div>
-                        <label>Stock</label>
-                        <input type="text" placeholder="Stock">
-                    </div>
-                </div>
-
-                <label>Description</label>
-                <textarea placeholder="Product description"></textarea>
-
-                <button class="submit-btn">Add Product</button>
-            </div>
+            </form>
         </div>
     </div>
 
-    <script src="../../static/js/admin/inventory.js"></script>
+    <script src="{{ url_for('static', filename='js/admin/inventory.js') }}"></script>
 </body>
 </html>
