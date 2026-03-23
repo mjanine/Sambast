@@ -1,6 +1,6 @@
 import sqlite3
 import os
-from flask import Flask, render_template, g, request, session, redirect, url_for, flash
+from flask import Flask, render_template, g, request, session, redirect, url_for, flash, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
@@ -312,41 +312,36 @@ def admin_profile():
 # Flow: index.html -> /register -> verifycode.html -> /verify-otp -> setpin.html
 # =============================================================================
 
-@app.route('/register', methods=['GET', 'POST'])
+@app.route('/register', methods=['POST'])
 def register():
-    if request.method == 'POST':
-        full_name  = request.form.get('full_name', '').strip()
-        contact_no = request.form.get('contact_no', '').strip()
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid request. Expected JSON.'}), 400
 
-        if not full_name or not contact_no:
-            flash('Please fill in all fields.')
-            return redirect(url_for('home'))
+    full_name  = data.get('full_name', '').strip()
+    contact_no = data.get('contact_no', '').strip()
 
-        db = get_db()
+    if not full_name or not contact_no:
+        return jsonify({'error': 'Please fill in all fields.'}), 400
 
-        existing = db.execute(
-            'SELECT user_id FROM users WHERE contact_no = ?', (contact_no,)
-        ).fetchone()
-        if existing:
-            flash('An account with that contact number already exists.')
-            return redirect(url_for('home'))
+    db = get_db()
+    existing = db.execute(
+        'SELECT user_id FROM users WHERE contact_no = ?', (contact_no,)
+    ).fetchone()
+    if existing:
+        return jsonify({'error': 'An account with that contact number already exists.'}), 409
 
-        db.execute(
-            'INSERT INTO users (name, contact_no) VALUES (?, ?)',
-            (full_name, contact_no)
-        )
-        db.commit()
+    cursor = db.execute(
+        'INSERT INTO users (name, contact_no) VALUES (?, ?)',
+        (full_name, contact_no)
+    )
+    db.commit()
 
-        user = db.execute(
-            'SELECT user_id FROM users WHERE contact_no = ?', (contact_no,)
-        ).fetchone()
-        session['pending_user_id'] = user['user_id']
-        session['pending_contact']  = contact_no
+    session['pending_user_id'] = cursor.lastrowid
+    session['pending_contact']  = contact_no
 
-        #OTP generation and sending logic would go here (Dev A decision to skip for now)
-        return redirect(url_for('set_pin'))
-
-    return redirect(url_for('home'))
+    #OTP generation and sending logic would go here
+    return jsonify({'success': True, 'redirect_url': url_for('set_pin')})
 
 
 @app.route('/verify-otp', methods=['GET', 'POST'])
@@ -372,15 +367,18 @@ def set_pin():
         return redirect(url_for('home'))
 
     if request.method == 'POST':
-        pin = request.form.get('pin', '')
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Invalid request. Expected JSON.'}), 400
+        
+        pin = data.get('pin', '')
 
         if len(pin) != 4 or not pin.isdigit():
-            flash('PIN must be exactly 4 digits.')
-            return render_template('user/setpin.html')
+            return jsonify({'error': 'PIN must be exactly 4 digits.'}), 400
 
         # Store the PIN in session temporarily; confirmed on verify-pin page
         session['pending_pin_hash'] = generate_password_hash(pin)
-        return redirect(url_for('verify_pin'))
+        return jsonify({'success': True, 'redirect_url': url_for('verify_pin')})
 
     return render_template('user/setpin.html')
 
@@ -391,11 +389,14 @@ def verify_pin():
         return redirect(url_for('home'))
 
     if request.method == 'POST':
-        confirm_pin = request.form.get('pin', '')
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Invalid request. Expected JSON.'}), 400
+            
+        confirm_pin = data.get('pin', '')
 
         if not check_password_hash(session['pending_pin_hash'], confirm_pin):
-            flash('PINs do not match. Please try again.')
-            return render_template('user/verifypin.html')
+            return jsonify({'error': 'PINs do not match. Please try again.'}), 400
 
         # PINs match — save the hash to the DB and open a full session
         db = get_db()
@@ -411,33 +412,39 @@ def verify_pin():
         session.pop('pending_contact', None)
         session['user_id'] = user_id
 
-        return redirect(url_for('shop_home'))
+        return jsonify({'success': True, 'redirect_url': url_for('shop_home')})
 
     return render_template('user/verifypin.html')
 
 
-@app.route('/sign-in', methods=['GET', 'POST'])
+@app.route('/sign-in', methods=['POST'])
 def sign_in():
-    if request.method == 'POST':
-        contact_no = request.form.get('contact_no', '').strip()
-        pin        = request.form.get('pin', '')
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid request. Expected JSON.'}), 400
+        
+    contact_no = data.get('contact_no', '').strip()
+    pin        = data.get('pin', '')
 
-        db   = get_db()
-        user = db.execute(
-            'SELECT * FROM users WHERE contact_no = ?', (contact_no,)
-        ).fetchone()
+    db   = get_db()
+    user = db.execute(
+        'SELECT * FROM users WHERE contact_no = ?', (contact_no,)
+    ).fetchone()
 
-        if not user or not user['pin_hash']:
-            flash('No account found. Please create an account first.')
-            return render_template('user/usersignin.html')
+    if not user:
+        return jsonify({'error': 'No account found with that contact number.'}), 404
 
-        if not check_password_hash(user['pin_hash'], pin):
-            flash('Incorrect PIN. Please try again.')
-            return render_template('user/usersignin.html')
+    if not user['pin_hash']:
+        return jsonify({'error': 'Account exists, but a PIN has not been set. Please complete registration.'}), 403
 
-        session['user_id'] = user['user_id']
-        return redirect(url_for('shop_home'))
+    if not check_password_hash(user['pin_hash'], pin):
+        return jsonify({'error': 'Incorrect PIN. Please try again.'}), 401
 
+    session['user_id'] = user['user_id']
+    return jsonify({'success': True, 'redirect_url': url_for('shop_home')})
+
+@app.route('/sign-in', methods=['GET'])
+def sign_in_page():
     return render_template('user/usersignin.html')
 
 
