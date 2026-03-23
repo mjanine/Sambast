@@ -45,8 +45,9 @@ def init_db():
         # Core Tables
         cursor.execute('''CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY AUTOINCREMENT, 
-            email TEXT UNIQUE NOT NULL, 
+            email TEXT UNIQUE, 
             name TEXT, 
+            contact_no TEXT UNIQUE NOT NULL,
             otp_code TEXT, 
             pin_hash TEXT, 
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
@@ -305,6 +306,154 @@ def admin_profile():
     db = get_db()
     admin = db.execute('SELECT * FROM admin WHERE admin_id = ?', (session['admin_id'],)).fetchone()
     return render_template('admin/profile.html', admin=admin)
+
+# =============================================================================
+# PART 2 — USER REGISTRATION
+# Flow: index.html -> /register -> verifycode.html -> /verify-otp -> setpin.html
+# =============================================================================
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        full_name  = request.form.get('full_name', '').strip()
+        contact_no = request.form.get('contact_no', '').strip()
+
+        if not full_name or not contact_no:
+            flash('Please fill in all fields.')
+            return redirect(url_for('home'))
+
+        db = get_db()
+
+        existing = db.execute(
+            'SELECT user_id FROM users WHERE contact_no = ?', (contact_no,)
+        ).fetchone()
+        if existing:
+            flash('An account with that contact number already exists.')
+            return redirect(url_for('home'))
+
+        db.execute(
+            'INSERT INTO users (name, contact_no) VALUES (?, ?)',
+            (full_name, contact_no)
+        )
+        db.commit()
+
+        user = db.execute(
+            'SELECT user_id FROM users WHERE contact_no = ?', (contact_no,)
+        ).fetchone()
+        session['pending_user_id'] = user['user_id']
+        session['pending_contact']  = contact_no
+
+        #OTP generation and sending logic would go here (Dev A decision to skip for now)
+        return redirect(url_for('set_pin'))
+
+    return redirect(url_for('home'))
+
+
+@app.route('/verify-otp', methods=['GET', 'POST'])
+def verify_otp_user():
+    """
+    Placeholder — OTP not implemented yet (Dev A decision).
+    Kept so verifycode.html form action can point here without a 404.
+    Immediately redirects to set-pin.
+    """
+    return redirect(url_for('set_pin'))
+
+
+# =============================================================================
+# PART 3 — USER PIN AUTH
+# Flow: setpin.html -> /set-pin -> verifypin.html -> /verify-pin -> shophomepage
+#        usersignin.html -> /sign-in -> shophomepage
+# =============================================================================
+
+@app.route('/set-pin', methods=['GET', 'POST'])
+def set_pin():
+    # Must have come from registration
+    if 'pending_user_id' not in session:
+        return redirect(url_for('home'))
+
+    if request.method == 'POST':
+        pin = request.form.get('pin', '')
+
+        if len(pin) != 4 or not pin.isdigit():
+            flash('PIN must be exactly 4 digits.')
+            return render_template('user/setpin.html')
+
+        # Store the PIN in session temporarily; confirmed on verify-pin page
+        session['pending_pin_hash'] = generate_password_hash(pin)
+        return redirect(url_for('verify_pin'))
+
+    return render_template('user/setpin.html')
+
+
+@app.route('/verify-pin', methods=['GET', 'POST'])
+def verify_pin():
+    if 'pending_user_id' not in session or 'pending_pin_hash' not in session:
+        return redirect(url_for('home'))
+
+    if request.method == 'POST':
+        confirm_pin = request.form.get('pin', '')
+
+        if not check_password_hash(session['pending_pin_hash'], confirm_pin):
+            flash('PINs do not match. Please try again.')
+            return render_template('user/verifypin.html')
+
+        # PINs match — save the hash to the DB and open a full session
+        db = get_db()
+        db.execute(
+            'UPDATE users SET pin_hash = ? WHERE user_id = ?',
+            (session['pending_pin_hash'], session['pending_user_id'])
+        )
+        db.commit()
+
+        # Promote from pending session to full user session
+        user_id = session.pop('pending_user_id')
+        session.pop('pending_pin_hash', None)
+        session.pop('pending_contact', None)
+        session['user_id'] = user_id
+
+        return redirect(url_for('shop_home'))
+
+    return render_template('user/verifypin.html')
+
+
+@app.route('/sign-in', methods=['GET', 'POST'])
+def sign_in():
+    if request.method == 'POST':
+        contact_no = request.form.get('contact_no', '').strip()
+        pin        = request.form.get('pin', '')
+
+        db   = get_db()
+        user = db.execute(
+            'SELECT * FROM users WHERE contact_no = ?', (contact_no,)
+        ).fetchone()
+
+        if not user or not user['pin_hash']:
+            flash('No account found. Please create an account first.')
+            return render_template('user/usersignin.html')
+
+        if not check_password_hash(user['pin_hash'], pin):
+            flash('Incorrect PIN. Please try again.')
+            return render_template('user/usersignin.html')
+
+        session['user_id'] = user['user_id']
+        return redirect(url_for('shop_home'))
+
+    return render_template('user/usersignin.html')
+
+
+@app.route('/sign-out')
+def sign_out():
+    session.pop('user_id', None)
+    return redirect(url_for('sign_in'))
+
+
+# Placeholder shop route — Part 4 will flesh this out
+@app.route('/shop')
+def shop_home():
+    if 'user_id' not in session:
+        return redirect(url_for('sign_in'))
+    return render_template('user/shophomepage.html')
+
 
 if __name__ == '__main__':
     if not os.path.exists(DATABASE):

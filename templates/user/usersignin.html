@@ -17,24 +17,36 @@
         <main class="auth-content">
             <h1 class="main-title">Enter 4-digit PIN</h1>
             
-            <form class="auth-form" action="homepage.html">
+            {% with messages = get_flashed_messages() %}
+              {% if messages %}
+                <p style="color:red; font-size:0.8rem; text-align:center;">{{ messages[0] }}</p>
+              {% endif %}
+            {% endwith %}
+
+            <form class="auth-form" action="/sign-in" method="POST" id="signInForm">
+                <div class="input-field" style="margin-bottom: 16px;">
+                    <input type="tel" name="contact_no" placeholder="CONTACT NO." required>
+                </div>
+
                 <div class="pin-container">
                     <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
                     <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
                     <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
                     <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
                 </div>
+                <!-- Hidden field that usersignin.js fills before submit -->
+                <input type="hidden" name="pin" id="pinValue">
 
                 <button type="submit" class="primary-btn">SIGN-IN</button>
-                
+
                 <a href="#" class="forgot-link">Forgot PIN?</a>
             </form>
         </main>
 
         <footer class="auth-footer">
-            <p>Don't have an account? <a href="index.html" class="accent-link">Create an account</a></p>
+            <p>Don't have an account? <a href="/" class="accent-link">Create an account</a></p>
         </footer>
     </div>
-<script src="../../static/js/usersignin.js"></script>
+<script src="{{ url_for('static', filename='js/user/usersignin.js') }}"></script>
 </body>
 </html>

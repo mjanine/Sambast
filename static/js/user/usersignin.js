@@ -1,14 +1,13 @@
 const inputs = document.querySelectorAll('.pin-container input');
-const form = document.querySelector('.auth-form');
+const form   = document.getElementById('signInForm');
 
-// Handle auto-focus navigation between PIN boxes
+// Auto-advance / backspace navigation
 inputs.forEach((input, index) => {
     input.addEventListener('input', (e) => {
         if (e.target.value.length === 1 && index < inputs.length - 1) {
             inputs[index + 1].focus();
         }
     });
-
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Backspace' && !e.target.value && index > 0) {
             inputs[index - 1].focus();
@@ -16,29 +15,18 @@ inputs.forEach((input, index) => {
     });
 });
 
-// Sign-In Validation Logic
+// Before submitting, collect digits into the hidden <input name="pin">
 form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    
-    let enteredPin = "";
-    inputs.forEach(input => enteredPin += input.value);
-    
-    // Retrieve the registered PIN from localStorage
-    const savedPin = localStorage.getItem('userPin');
+    let pin = '';
+    inputs.forEach(input => pin += input.value);
 
-    if (!savedPin) {
-        alert("No account found. Please create an account first.");
-        window.location.href = "createacc.html";
+    if (pin.length !== 4) {
+        e.preventDefault();
+        alert('Please enter all 4 digits.');
         return;
     }
 
-    if (enteredPin === savedPin) {
-        // Success: Redirect to shop homepage
-        window.location.href = "shophomepage.html";
-    } else {
-        // Failure: Shake effect or alert and clear
-        alert("Incorrect PIN. Please try again.");
-        inputs.forEach(input => input.value = "");
-        inputs[0].focus();
-    }
+    document.getElementById('pinValue').value = pin;
+    // Form submits normally to POST /sign-in
+    // Server looks up user by contact_no and checks PIN hash
 });

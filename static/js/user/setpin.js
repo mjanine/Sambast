@@ -1,15 +1,13 @@
 const inputs = document.querySelectorAll('.pin-container input');
-const form = document.getElementById('setPinForm');
+const form   = document.getElementById('setPinForm');
 
+// Auto-advance / backspace navigation
 inputs.forEach((input, index) => {
-    // Move to next input once a digit is entered
     input.addEventListener('input', (e) => {
         if (e.target.value.length === 1 && index < inputs.length - 1) {
             inputs[index + 1].focus();
         }
     });
-
-    // Move to previous input on backspace
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Backspace' && !e.target.value && index > 0) {
             inputs[index - 1].focus();
@@ -17,9 +15,17 @@ inputs.forEach((input, index) => {
     });
 });
 
-// Capture and Save PIN to localStorage
-form.addEventListener('submit', () => {
-    let pin = "";
+// Before submitting, collect the 4 digits into the hidden <input name="pin">
+form.addEventListener('submit', (e) => {
+    let pin = '';
     inputs.forEach(input => pin += input.value);
-    localStorage.setItem('userPin', pin);
+
+    if (pin.length !== 4) {
+        e.preventDefault();
+        alert('Please enter all 4 digits.');
+        return;
+    }
+
+    document.getElementById('pinValue').value = pin;
+    // Form submits normally to POST /set-pin
 });

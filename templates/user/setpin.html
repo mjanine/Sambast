@@ -21,25 +21,31 @@
                 <p class="sub-text">You'll use this to log-in.</p>
             </div>
 
-            <form class="auth-form" action="verifypin.html" id="setPinForm">
+            {% with messages = get_flashed_messages() %}
+              {% if messages %}
+                <p style="color:red; font-size:0.8rem; text-align:center;">{{ messages[0] }}</p>
+              {% endif %}
+            {% endwith %}
+
+            <form class="auth-form" action="/set-pin" method="POST" id="setPinForm">
                 <div class="pin-container">
                     <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
                     <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
                     <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
                     <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
                 </div>
+                <!-- Hidden field that setpin.js fills before submit -->
+                <input type="hidden" name="pin" id="pinValue">
 
                 <button type="submit" class="primary-btn">ENTER</button>
             </form>
         </main>
 
         <footer class="auth-footer">
-            <p>Have an account? <a href="usersignin.html" class="accent-link">Sign-In</a></p>
+            <p>Have an account? <a href="/sign-in" class="accent-link">Sign-In</a></p>
         </footer>
     </div>
 
-  <script src="../../static/js/user/setpin.js"></script>
-</body>
-</html>
+  <script src="{{ url_for('static', filename='js/user/setpin.js') }}"></script>
 </body>
 </html>
