@@ -122,6 +122,13 @@ def admin_login():
             session.clear()
             session['admin_id'] = admin['admin_id']
             session['admin_user'] = admin['username']
+
+            # --- PASTE THE AUDIT LOG CODE HERE ---
+            db.execute('INSERT INTO audit_logs (admin_name, action, target) VALUES (?, ?, ?)', 
+                       (admin['username'], 'LOGIN', 'Successful login to admin dashboard'))
+            db.commit()
+            # -------------------------------------
+
             return redirect(url_for('admin_dashboard'))
         
         flash("Invalid Username or Password")
