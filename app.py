@@ -4,11 +4,47 @@ import os
 from flask import Flask, render_template, g, request, session, redirect, url_for, flash, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+import csv
+import io
+from flask import make_response
 
 app = Flask(__name__)
 app.secret_key = 'dev_key_for_session_management' 
 DATABASE = 'database.db'
 
+@app.route('/admin/export-audit')
+def export_audit():
+    if 'admin_id' not in session:
+        return redirect(url_for('admin_login'))
+
+    db = get_db()
+    # Fetch logs with the admin username
+    logs = db.execute('''
+        SELECT admin.username, audit_logs.action_text, audit_logs.timestamp 
+        FROM audit_logs 
+        LEFT JOIN admin ON audit_logs.admin_id = admin.admin_id 
+        ORDER BY timestamp DESC
+    ''').fetchall()
+
+    # Create an in-memory string file
+    si = io.StringIO()
+    cw = csv.writer(si)
+    
+    # Write the header row
+    cw.writerow(['Admin User', 'Action Description', 'Timestamp'])
+    
+    # Write the data rows
+    for log in logs:
+        cw.writerow([log['username'] if log['username'] else 'System', 
+                     log['action_text'], 
+                     log['timestamp']])
+
+    # Create the response object
+    output = make_response(si.getvalue())
+    output.headers["Content-Disposition"] = "attachment; filename=audit_logs_export.csv"
+    output.headers["Content-type"] = "text/csv"
+    
+    return output
 
 # --- CONFIGURATION: IMAGE UPLOADS ---
 UPLOAD_FOLDER = 'static/uploads'
@@ -123,16 +159,17 @@ def admin_login():
             session['admin_id'] = admin['admin_id']
             session['admin_user'] = admin['username']
 
-            # --- PASTE THE AUDIT LOG CODE HERE ---
-            db.execute('INSERT INTO audit_logs (admin_name, action, target) VALUES (?, ?, ?)', 
-                       (admin['username'], 'LOGIN', 'Successful login to admin dashboard'))
+            # --- UPDATED AUDIT LOG CODE TO MATCH YOUR TABLE ---
+            db.execute('INSERT INTO audit_logs (admin_id, action_text) VALUES (?, ?)', 
+                       (admin['admin_id'], f"Admin {admin['username']} logged in successfully"))
             db.commit()
-            # -------------------------------------
+            # --------------------------------------------------
 
             return redirect(url_for('admin_dashboard'))
         
         flash("Invalid Username or Password")
     return render_template('admin/adminlogin.html')
+
 
 @app.route('/admin/dashboard')
 def admin_dashboard():
