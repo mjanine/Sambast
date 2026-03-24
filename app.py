@@ -651,6 +651,14 @@ def history_page():
         return redirect(url_for('sign_in_page'))
     return render_template('user/history.html')
 
+@app.route('/profile')
+def profile_page():
+    if 'user_id' not in session:
+        return redirect(url_for('sign_in_page'))
+    db = get_db()
+    user = db.execute('SELECT name, contact_no FROM users WHERE user_id = ?', (session['user_id'],)).fetchone()
+    return render_template('user/profile.html', user=user)
+
 @app.route('/cart')
 def cart_page():
     if 'user_id' not in session:

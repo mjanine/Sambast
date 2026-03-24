@@ -22,29 +22,29 @@
         <main class="profile-content">
             <div class="input-group">
                 <label>NAME</label>
-                <div class="static-field">JUAN DELA CRUZ</div>
+                <div class="static-field">{{ user.name }}</div>
             </div>
 
             <div class="input-group">
                 <label>CONTACT NO.</label>
                 <div class="editable-field">
-                    <span>09123456789</span>
+                    <span>{{ user.contact_no }}</span>
                     <button class="edit-icon">✎</button>
                 </div>
             </div>
 
             <div class="nav-menu">
-                <button class="menu-btn" onclick="location.href='verifycode.html'">
+                <button class="menu-btn" onclick="location.href='/set-pin'">
                     Change Password
                 </button>
-                <button class="menu-btn" onclick="location.href='history.html'">
+                <button class="menu-btn" onclick="location.href='/history'">
                     View Purchased History
                 </button>
             </div>
         </main>
 
         <footer class="profile-footer">
-            <button class="logout-btn" onclick="location.href='index.html'">LOG-OUT</button>
+            <button class="logout-btn" onclick="location.href='/sign-out'">LOG-OUT</button>
         </footer>
     </div>
 

@@ -13,13 +13,13 @@
         <header class="shop-header">
             <h1 class="brand-logo">LOGO</h1>
             <div class="nav-actions">
-                <div class="cart-wrapper" onclick="window.location.href='cart.html'">
+                <div class="cart-wrapper" onclick="window.location.href='/cart'">
                     <span class="cart-icon">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
                     </span>
                     <span class="cart-badge" id="cartCount">0</span>
                 </div>
-                <div class="user-avatar" onclick="window.location.href='profile.html'" style="cursor:pointer; display:flex; align-items:center;">
+                <div class="user-avatar" onclick="window.location.href='/profile'" style="cursor:pointer; display:flex; align-items:center;">
                     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 </div>
             </div>
@@ -49,7 +49,7 @@
                 <p class="sub-text">Subtotal: <span id="subTotal">0000</span></p>
                 <p class="discount-text">Total Discount: 0000</p>
             </div>
-            <button class="checkout-trigger" onclick="window.location.href='checkout.html'">
+            <button class="checkout-trigger" onclick="window.location.href='/checkout'">
                 Check Out (<span id="btnQty">0</span>)
             </button>
         </footer>
