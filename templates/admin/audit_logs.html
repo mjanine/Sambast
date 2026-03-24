@@ -24,24 +24,22 @@
         <div class="close-btn" id="closeBtn">✕</div>
         <div class="sidebar-menu">
             <ul class="nav-links">
-               <ul class="nav-links">
-    <li class="{{ 'active' if request.endpoint == 'admin_profile' }}">
-        <a href="{{ url_for('admin_profile') }}">PROFILE</a>
-    </li>
-    
-    <li class="{{ 'active' if request.endpoint == 'admin_dashboard' }}">
-        <a href="{{ url_for('admin_dashboard') }}">ANALYTICS</a>
-    </li>
-    <li class="{{ 'active' if request.endpoint == 'admin_orders' }}">
-        <a href="{{ url_for('admin_orders') }}">ORDERS</a>
-    </li>
-    <li class="{{ 'active' if request.endpoint == 'admin_inventory' }}">
-        <a href="{{ url_for('admin_inventory') }}">INVENTORY</a>
-    </li>
-    <li class="{{ 'active' if request.endpoint == 'admin_audit' }}">
-        <a href="{{ url_for('admin_audit') }}">AUDIT LOGS</a>
-    </li>
-</ul>
+                <li class="{{ 'active' if request.endpoint == 'admin_profile' }}">
+                    <a href="{{ url_for('admin_profile') }}">PROFILE</a>
+                </li>
+                <li class="{{ 'active' if request.endpoint == 'admin_dashboard' }}">
+                    <a href="{{ url_for('admin_dashboard') }}">ANALYTICS</a>
+                </li>
+                <li class="{{ 'active' if request.endpoint == 'admin_orders' }}">
+                    <a href="{{ url_for('admin_orders') }}">ORDERS</a>
+                </li>
+                <li class="{{ 'active' if request.endpoint == 'admin_inventory' }}">
+                    <a href="{{ url_for('admin_inventory') }}">INVENTORY</a>
+                </li>
+                <li class="{{ 'active' if request.endpoint == 'admin_audit' }}">
+                    <a href="{{ url_for('admin_audit') }}">AUDIT LOGS</a>
+                </li>
+            </ul>
         </div>
 
         <div class="logout-container">
@@ -52,7 +50,7 @@
     <section class="audit">
         <div class="audit-header">
             <h1>AUDIT LOGS</h1>
-            <button class="audit-btn">
+            <button class="audit-btn" onclick="window.location.href='/admin/export-audit'">
                 <svg class="download-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 3v12"></path>
                     <path d="M7 10l5 5 5-5"></path>
@@ -63,7 +61,7 @@
         </div>
 
         <div class="search-box">
-            <input type="text" id="auditSearch" placeholder="Search Logs...">
+            <input type="text" id="auditSearch" placeholder="Search Logs..." onkeyup="filterLogs()">
             <svg class="search-mag" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2">
                 <circle cx="11" cy="11" r="8"/>
                 <path d="m21 21-4.3-4.3"/>
@@ -74,7 +72,7 @@
             {% for log in logs %}
             <div class="audit-card">
                 <div class="card-header">
-                    <strong>{{ log.username }}</strong>
+                    <strong>{{ log.username if log.username else "System" }}</strong>
                     <span class="date">{{ log.timestamp }}</span>
                 </div>
 
@@ -83,7 +81,7 @@
                 </div>
             </div>
             {% else %}
-            <div class="no-logs" style="text-align: center; margin-top: 50px;">
+            <div class="no-logs" style="text-align: center; margin-top: 50px; color: #666;">
                 <p>No activity records found.</p>
             </div>
             {% endfor %}
@@ -91,5 +89,17 @@
     </section>
 
     <script src="{{ url_for('static', filename='js/admin/inventory.js') }}"></script>
+    
+    <script>
+        function filterLogs() {
+            const input = document.getElementById('auditSearch').value.toLowerCase();
+            const cards = document.getElementsByClassName('audit-card');
+            
+            for (let i = 0; i < cards.length; i++) {
+                const text = cards[i].innerText.toLowerCase();
+                cards[i].style.display = text.includes(input) ? "" : "none";
+            }
+        }
+    </script>
 </body>
 </html>
