@@ -29,8 +29,8 @@
                 <li class="{{ 'active' if request.endpoint == 'admin_profile' }}">
                     <a href="{{ url_for('admin_profile') }}">PROFILE</a>
                 </li>
-                <li class="{{ 'active' if request.endpoint == 'admin_dashboard' }}">
-                    <a href="{{ url_for('admin_dashboard') }}">ANALYTICS</a>
+                <li class="{{ 'active' if request.endpoint == 'admin_analytics' }}">
+                    <a href="{{ url_for('admin_analytics') }}">ANALYTICS</a>
                 </li>
                 <li class="{{ 'active' if request.endpoint == 'admin_orders' }}">
                     <a href="{{ url_for('admin_orders') }}">ORDERS</a>

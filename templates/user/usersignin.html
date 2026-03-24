@@ -17,15 +17,11 @@
         <main class="auth-content">
             <h1 class="main-title">Enter 4-digit PIN</h1>
             
-            {% with messages = get_flashed_messages() %}
-              {% if messages %}
-                <p style="color:red; font-size:0.8rem; text-align:center;">{{ messages[0] }}</p>
-              {% endif %}
-            {% endwith %}
+            <p id="errorMessage" style="color:red; font-size:0.8rem; text-align:center; height: 1em;"></p>
 
             <form class="auth-form" action="/sign-in" method="POST" id="signInForm">
                 <div class="input-field" style="margin-bottom: 16px;">
-                    <input type="tel" name="contact_no" placeholder="CONTACT NO." required>
+                    <input type="tel" name="contact_no" id="contactNo" placeholder="CONTACT NO." required>
                 </div>
 
                 <div class="pin-container">
