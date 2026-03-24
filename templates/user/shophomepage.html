@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -86,4 +87,94 @@
 </div>
 <script src="../../static/js/user/shophomepage.js"></script>
 </body>
+=======
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Shop Homepage</title>
+    <link rel="stylesheet" href="../../static/css/user/shophomepage.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="shop-body">
+
+    <div class="main-wrapper">
+        <header class="shop-header">
+            <h1 class="brand-logo">LOGO</h1>
+            <div class="nav-actions">
+                <div class="cart-wrapper" onclick="window.location.href='cart.html'">
+                    <span class="cart-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                    </span>
+                    <span class="cart-badge" id="cartCount">0</span>
+                </div>
+                <div class="user-avatar" onclick="window.location.href='profile.html'" style="cursor:pointer; display:flex; align-items:center;">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+            </div>
+        </header>
+
+        <section class="top-nav">
+            <div class="search-container">
+                <input type="text" placeholder="Search Product" id="productSearch" onkeyup="searchFn()">
+                <span class="search-mag">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                </span>
+            </div>
+            <div class="filter-bar">
+                <button class="cat-pill active" onclick="filterFn('All', this)">All</button>
+                <button class="cat-pill" onclick="filterFn('Category 1', this)">Category 1</button>
+                <button class="cat-pill" onclick="filterFn('Category 2', this)">Category 2</button>
+                <button class="cat-pill" onclick="filterFn('Category 3', this)">Category 3</button>
+            </div>
+        </section>
+
+        <main class="scroll-container">
+            <div class="item-grid" id="itemGrid"></div>
+        </main>
+
+        <footer class="bottom-bar">
+            <div class="price-info">
+                <p class="sub-text">Subtotal: <span id="subTotal">0000</span></p>
+                <p class="discount-text">Total Discount: 0000</p>
+            </div>
+            <button class="checkout-trigger" onclick="window.location.href='checkout.html'">
+                Check Out (<span id="btnQty">0</span>)
+            </button>
+        </footer>
+    </div>
+
+    <div id="statusModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Order Status</h3>
+            <button class="close-modal" onclick="closeStatusModal()">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="status-card">
+                <p class="order-id-label">Order no.: <strong>00000000</strong></p>
+                <div class="progress-tracker">
+                    <div class="step active">
+                        <span class="dot"></span>
+                        <p>Order Placed</p>
+                    </div>
+                    <div class="step processing">
+                        <span class="dot"></span>
+                        <p>Preparing</p>
+                    </div>
+                    <div class="step">
+                        <span class="dot"></span>
+                        <p>Ready for Pick-up</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="../../static/js/user/shophomepage.js"></script>
+</body>
+>>>>>>> 63f72eb6a9a5fb57aefe979e3d77dd5008f3dbf9
 </html>

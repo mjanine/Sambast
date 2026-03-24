@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -44,4 +45,52 @@
 
     <script src="../../static/js/user/verifypin.js"></script>
 </body>
+=======
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sambast | Verify PIN</title>
+    <link rel="stylesheet" href="../../static/css/user/verifypin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="auth-page">
+
+    <div class="mobile-container">
+        <header class="header">
+            <span class="logo">LOGO</span>
+            <a href="setpin.html" class="back-btn">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M15 18l-6-6 6-6"/>
+                </svg>
+            </a>
+        </header>
+
+        <main class="auth-content">
+            <div class="text-group">
+                <h1 class="main-title">Verify your 4-digit PIN</h1>
+                <p class="sub-text">Please re-enter your PIN to confirm.</p>
+            </div>
+
+            <form class="auth-form" id="verifyPinForm">
+                <div class="pin-container">
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                </div>
+
+                <button type="submit" class="primary-btn">CONFIRM</button>
+            </form>
+        </main>
+
+        <footer class="auth-footer">
+            <p>Have an account? <a href="usersignin.html" class="accent-link">Sign-In</a></p>
+        </footer>
+    </div>
+
+    <script src="../../static/js/user/verifypin.js"></script>
+</body>
+>>>>>>> 63f72eb6a9a5fb57aefe979e3d77dd5008f3dbf9
 </html>

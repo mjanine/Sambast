@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -42,4 +43,50 @@
 </body>
 </html>
 </body>
+=======
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sambast | Set PIN</title>
+    <link rel="stylesheet" href="../../static/css/user/setpin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="auth-page">
+
+    <div class="mobile-container">
+        <header class="header">
+            <span class="logo">LOGO</span>
+            <span class="back-placeholder" style="visibility: hidden;">←</span>
+        </header>
+
+        <main class="auth-content">
+            <div class="text-group">
+                <h1 class="main-title">Set your 4-digit PIN</h1>
+                <p class="sub-text">You'll use this to log-in.</p>
+            </div>
+
+            <form class="auth-form" action="verifypin.html" id="setPinForm">
+                <div class="pin-container">
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                </div>
+
+                <button type="submit" class="primary-btn">ENTER</button>
+            </form>
+        </main>
+
+        <footer class="auth-footer">
+            <p>Have an account? <a href="usersignin.html" class="accent-link">Sign-In</a></p>
+        </footer>
+    </div>
+
+  <script src="../../static/js/user/setpin.js"></script>
+</body>
+</html>
+</body>
+>>>>>>> 63f72eb6a9a5fb57aefe979e3d77dd5008f3dbf9
 </html>
