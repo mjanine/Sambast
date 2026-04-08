@@ -25,7 +25,13 @@ body.shop-body {
     height: 60px;
 }
 
-.brand-logo {
+.logo-img {
+    height: 40px; /* Maintains size */
+    width: auto;
+    object-fit: contain;
+    display: block;
+    
+    /* Your requested spacing */
     font-weight: 900; 
     font-size: 1rem; 
     letter-spacing: 0.2px; 

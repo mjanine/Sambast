@@ -1,6 +1,6 @@
 :root {
-    --bg-white: #F9F8F6; /* Antique Cream */
-    --input-fill: #D6D0C5; /* Natural Beige */
+    --bg-white: #D6D0C5; /* Antique Cream */
+    --input-fill: #ffffff;  /* Natural Beige */
     --btn-black: #A6171C; /* Ruby Red */
     --accent-green: #A6171C;
     --bg-footer-blue: #1A323E; 
@@ -34,11 +34,11 @@ body, html {
     height: 60px;
 }
 
-.logo {
-    font-weight: 900;
-    font-size: 1rem;
-    letter-spacing: 0.2px;
-    color: #000000;
+.logo-img {
+    height: 40px;
+    width: auto;
+    object-fit: contain;
+    display: block;
 }
 
 .auth-content {

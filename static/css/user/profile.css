@@ -4,10 +4,8 @@
     --action-ruby-red: #A6171C;
     --text-pure-black: #000000;
     --bg-footer-blue: #1A323E;
-    --sunny: #F1C045;
 }
 
-/* RESET */
 * {
     margin: 0;
     padding: 0;
@@ -36,7 +34,6 @@ body.profile-body {
     margin-bottom: 45px;
 }
 
-/* UPDATED BACK BUTTON: Matched her circle SVG style */
 .back-btn { 
     display: flex;
     align-items: center;
@@ -49,8 +46,6 @@ body.profile-body {
     color: var(--text-pure-black);
     transition: 0.2s;
     cursor: pointer;
-    position: relative;
-    z-index: 999;
 }
 
 .back-btn:hover {
@@ -81,6 +76,7 @@ body.profile-body {
     color: var(--bg-footer-blue);
 }
 
+/* Unified color for both name and contact containers */
 .static-field, .editable-field, .menu-btn {
     width: 100%;
     background: var(--fill-natural-beige);
@@ -96,17 +92,13 @@ body.profile-body {
     color: var(--text-pure-black);
 }
 
-.static-field {
-    background: #E8E4DD;
-    opacity: 0.9;
-}
-
 .edit-icon {
     background: none;
     border: none;
-    font-size: 18px;
     cursor: pointer;
     color: var(--action-ruby-red);
+    display: flex;
+    align-items: center;
 }
 
 /* MENU BUTTONS */
@@ -118,11 +110,11 @@ body.profile-body {
 }
 
 .menu-btn {
-    cursor: pointer;
     justify-content: center;
     background: var(--bg-footer-blue);
     color: var(--bg-antique-cream);
     transition: transform 0.1s;
+    cursor: pointer;
 }
 
 .menu-btn:active {
@@ -143,7 +135,6 @@ body.profile-body {
     border-radius: 50px;
     font-weight: 800;
     font-size: 12px;
-    box-shadow: 0 4px 8px rgba(166, 23, 28, 0.2);
     cursor: pointer;
     color: #ffffff;
 }

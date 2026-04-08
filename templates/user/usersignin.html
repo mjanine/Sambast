@@ -4,14 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Sambast | Sign-In</title>
-    <link rel="stylesheet" href="../../static/css/user/usersignin.css">
+    <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='image/logo.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/user/usersignin.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body class="auth-page">
 
     <div class="mobile-container">
         <header class="header">
-            <span class="logo">LOGO</span>
+            <img src="{{ url_for('static', filename='image/logo.png') }}" alt="Logo" class="logo-img">
         </header>
 
         <main class="auth-content">
@@ -25,12 +26,11 @@
                 </div>
 
                 <div class="pin-container">
-                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
-                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
-                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
-                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
                 </div>
-                <!-- Hidden field that usersignin.js fills before submit -->
                 <input type="hidden" name="pin" id="pinValue">
 
                 <button type="submit" class="primary-btn">SIGN-IN</button>
@@ -43,6 +43,7 @@
             <p>Don't have an account? <a href="/" class="accent-link">Create an account</a></p>
         </footer>
     </div>
-<script src="{{ url_for('static', filename='js/user/usersignin.js') }}"></script>
+
+    <script src="{{ url_for('static', filename='js/user/usersignin.js') }}"></script>
 </body>
 </html>

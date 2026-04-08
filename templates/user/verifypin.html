@@ -4,14 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Sambast | Verify PIN</title>
-    <link rel="stylesheet" href="../../static/css/user/verifypin.css">
+    <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='image/logo.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/user/verifypin.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body class="auth-page">
 
     <div class="mobile-container">
         <header class="header">
-            <span class="logo">LOGO</span>
+            <img src="{{ url_for('static', filename='image/logo.png') }}" alt="Logo" class="logo-img">
             <a href="/set-pin" class="back-btn">
                 <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M15 18l-6-6 6-6"/>
@@ -40,7 +41,6 @@
                     <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
                     <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
                 </div>
-                <!-- Hidden field that verifypin.js fills before submit -->
                 <input type="hidden" name="pin" id="pinValue">
 
                 <button type="submit" class="primary-btn" id="submitButton">CONFIRM</button>
@@ -52,6 +52,6 @@
         </footer>
     </div>
 
-    <script src="../../static/js/user/verifypin.js"></script>
+    <script src="{{ url_for('static', filename='js/user/verifypin.js') }}"></script>
 </body>
 </html>

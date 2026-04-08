@@ -58,9 +58,8 @@ document.addEventListener('DOMContentLoaded', () => {
             statusDesc.innerText = "Your order has been cancelled. Please contact the shop for assistance.";
             statusText.style.color = "#dc3545";
         } else {
-            // Default "Pending" or "Preparing" state
             statusDesc.innerText = "Your order is being prepared. We'll notify you when it's ready for pick-up!";
-            statusText.style.color = "#000000";
+            statusText.style.color = "#1A323E";
         }
     }
 

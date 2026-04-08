@@ -1,6 +1,6 @@
 :root {
-    --bg-antique-cream: #F9F8F6;
-    --fill-natural-beige: #D6D0C5; 
+    --bg-antique-cream: #D6D0C5;
+    --fill-natural-beige: #ffffff; 
     --action-ruby-red: #A6171C;
     --text-pure-black: #000000;
     --bg-footer-blue: #1A323E
@@ -33,7 +33,12 @@ body, html {
     height: 60px;
 }
 
-.logo { font-weight: 900; font-size: 1rem; letter-spacing: 0.2px; color: var(--text-pure-black); }
+.logo-img {
+    height: 40px;
+    width: auto;
+    object-fit: contain;
+    display: block;
+}
 
 .auth-content {
     flex: 1;
