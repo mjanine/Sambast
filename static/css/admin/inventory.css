@@ -376,3 +376,32 @@ body {
     margin-top:15px;
     cursor:pointer;
 }
+
+/* AI ALERT BANNER */
+#ai-inventory-alert {
+    display: none;
+    background: #F9F8F6;
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-left: 5px solid #a6171c;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+#ai-inventory-alert .ai-alert-header {
+    margin-bottom: 8px;
+}
+
+#ai-inventory-alert .ai-alert-header strong {
+    color: #a6171c;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+#ai-inventory-alert .ai-alert-body {
+    font-size: 12px;
+    color: #333;
+    line-height: 1.5;
+}

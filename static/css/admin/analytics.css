@@ -282,3 +282,19 @@ body {
 .stock-card li{
     margin-bottom:6px;
 }
+
+/* AI SUMMARY */
+
+.ai-summary-card {
+    background: #F9F8F6;
+    border-radius: 18px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.ai-summary-text {
+    font-size: 14px;
+    color: #1A323E;
+    line-height: 1.5;
+}

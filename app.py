@@ -299,6 +299,42 @@ def delete_product(product_id):
     db.commit()
     return redirect(url_for('admin_inventory'))
 
+@app.route('/api/admin/inventory-insights', methods=['GET'])
+def inventory_insights():
+    if 'admin_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    db = get_db()
+    try:
+        products = db.execute('SELECT name, stock_status FROM products').fetchall()
+        inventory_list = ", ".join([f"{p['name']} (Stock: {p['stock_status']})" for p in products])
+        
+        prompt = f"Current inventory: {inventory_list}. Please return a 1-2 sentence warning identifying any items that need restocking based on low stock."
+        
+        response = ai_model.generate_content(prompt)
+        return jsonify({"insights": response.text.strip()})
+    except Exception as e:
+        print(f"Inventory insights error: {e}")
+        return jsonify({"error": "Failed to generate insights"}), 500
+
+@app.route('/api/admin/business-summary', methods=['GET'])
+def business_summary():
+    if 'admin_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    db = get_db()
+    try:
+        result = db.execute("SELECT SUM(total_price) as total FROM orders WHERE status != 'Cancelled'").fetchone()
+        total_revenue = result['total'] if result and result['total'] else 0
+        
+        prompt = f"The store has a total revenue of ₱{total_revenue:,.2f}. Write a short, encouraging 2-sentence executive summary about the store's performance."
+        
+        response = ai_model.generate_content(prompt)
+        return jsonify({"summary": response.text.strip()})
+    except Exception as e:
+        print(f"Business summary error: {e}")
+        return jsonify({"error": "Failed to generate business summary"}), 500
+
 # --- AUTH FLOWS ---
 
 @app.route('/admin/logout')

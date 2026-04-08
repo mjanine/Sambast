@@ -112,3 +112,27 @@ if (auditSearch) {
         });
     });
 }
+
+// --- AI INVENTORY INSIGHTS ---
+document.addEventListener("DOMContentLoaded", () => {
+    fetch("/api/admin/inventory-insights")
+        .then(response => {
+            if (!response.ok) throw new Error("Failed to fetch");
+            return response.json();
+        })
+        .then(data => {
+            const alertBanner = document.getElementById("ai-inventory-alert");
+            const alertBody = alertBanner ? alertBanner.querySelector(".ai-alert-body") : null;
+            
+            // Assume the text is in data.insights, data.message, or data directly if it's a string
+            const warningText = data.insights || data.message || (typeof data === "string" ? data : JSON.stringify(data));
+
+            if (alertBanner && alertBody && warningText) {
+                alertBody.textContent = warningText;
+                alertBanner.style.display = "block";
+            }
+        })
+        .catch(error => {
+            // Catch error silently, leaving the banner hidden (display: none)
+        });
+});
