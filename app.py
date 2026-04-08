@@ -3,7 +3,22 @@ import os
 from flask import Flask, render_template, g, request, session, redirect, url_for, flash, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
+import google.generativeai as genai
 
+# --- AI SETUP ---
+load_dotenv() # Loads the .env file
+
+api_key = os.getenv("GEMINI_API_KEY")
+if not api_key:
+    # If this triggers, check that your .env file is named correctly and in the right folder!
+    print("WARNING: No GEMINI_API_KEY found in .env file. AI features will fail.")
+else:
+    genai.configure(api_key=api_key)
+    # We define the model here so we can use it throughout the app
+    ai_model = genai.GenerativeModel('gemini-2.5-flash') 
+
+# --- FLASK SETUP ---
 app = Flask(__name__)
 app.secret_key = 'dev_key_for_session_management' 
 DATABASE = 'database.db'
@@ -101,6 +116,49 @@ def init_db():
 
         db.commit()
         print("Database initialized successfully.")
+
+# --- AI CONTEXT HELPERS ---
+
+def get_inventory_context():
+    """Fetches all active products to feed to the AI Chatbot."""
+    db = get_db()
+    try:
+        products = db.execute('SELECT name, category, price, description FROM products WHERE stock_status = 1').fetchall()
+        if not products:
+            return "No products currently available."
+        
+        context_string = "CURRENT STORE INVENTORY:\n"
+        for p in products:
+            context_string += f"- {p['name']} (Category: {p['category']}): ₱{p['price']}. Description: {p['description']}\n"
+        return context_string
+    except Exception as e:
+        print(f"Database error in get_inventory_context: {e}")
+        return "Inventory data currently unavailable."
+
+def get_top_products_context():
+    """Fetches the top 5 most bought items for the AI Recommendation engine."""
+    db = get_db()
+    try:
+        # SQL query to count which product_ids appear most in order_items
+        top_items = db.execute('''
+            SELECT p.name, COUNT(oi.product_id) as purchase_count
+            FROM order_items oi
+            JOIN products p ON oi.product_id = p.product_id
+            GROUP BY oi.product_id
+            ORDER BY purchase_count DESC
+            LIMIT 5
+        ''').fetchall()
+        
+        if not top_items:
+            return "Not enough sales data yet."
+            
+        context_string = "TOP SELLING PRODUCTS:\n"
+        for item in top_items:
+            context_string += f"- {item['name']} (Bought {item['purchase_count']} times)\n"
+        return context_string
+    except Exception as e:
+        print(f"Database error in get_top_products_context: {e}")
+        return "Top product data unavailable."
 
 # --- ROUTES ---
 
