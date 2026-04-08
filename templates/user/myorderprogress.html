@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Order Status</title>
-    <link rel="shortcut icon" type="image/png" href="../../static/image/logo.png">
-    <link rel="stylesheet" href="../../static/css/user/progress.css">
+    <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='image/logo.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/user/progress.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body class="progress-body">
@@ -65,6 +65,6 @@
         </footer>
     </div>
 
-    <script src="../../static/js/user/progress.js"></script>
+    <script src="{{ url_for('static', filename='js/user/progress.js') }}"></script>
 </body>
 </html>

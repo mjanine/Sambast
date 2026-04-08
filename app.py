@@ -336,6 +336,39 @@ def business_summary():
         print(f"Business summary error: {e}")
         return jsonify({"error": "Failed to generate business summary"}), 500
 
+@app.route('/api/admin/stats', methods=['GET'])
+def admin_stats():
+    if 'admin_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    db = get_db()
+    try:
+        # 1. Total Revenue (Completed only)
+        rev_res = db.execute("SELECT SUM(total_price) as total FROM orders WHERE status != 'Cancelled'").fetchone()
+        revenue = rev_res['total'] if rev_res['total'] else 0
+
+        # 2. Total Orders (All non-cancelled)
+        order_res = db.execute("SELECT COUNT(order_id) as count FROM orders WHERE status != 'Cancelled'").fetchone()
+        order_count = order_res['count'] if order_res['count'] else 0
+
+        # 3. Average Order Value
+        avg_value = revenue / order_count if order_count > 0 else 0
+
+        # 4. Low Stock Count (Items with stock_status 0 or very low)
+        # Note: If you used my seed_data, items with 0 stock have stock_status=0
+        low_stock_res = db.execute("SELECT name FROM products WHERE stock_status = 0").fetchall()
+        low_stock_items = [item['name'] for item in low_stock_res]
+
+        return jsonify({
+            "revenue": f"₱{revenue:,.2f}",
+            "order_count": order_count,
+            "avg_value": f"₱{avg_value:,.2f}",
+            "low_stock": low_stock_items
+        })
+    except Exception as e:
+        print(f"Stats Error: {e}")
+        return jsonify({"error": "Failed to load stats"}), 500
+
 # --- AUTH FLOWS ---
 
 @app.route('/admin/logout')
