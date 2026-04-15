@@ -27,10 +27,16 @@ body, html {
 
 .header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 15px;
+    margin-bottom: 45px;
     padding-top: 20px;
-    height: 60px;
+    height: auto; /* Resetting the height to match profile */
+}
+.header-title {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--bg-footer-blue);
 }
 
 .logo { font-weight: 900; font-size: 1rem; letter-spacing: 0.2px; color: var(--text-pure-black); }
@@ -129,4 +135,20 @@ body, html {
     text-decoration: none;
     color: var(--text-pure-black);
     font-weight: 700;
+}
+.back-btn { 
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: none;
+    border: none;
+    color: var(--text-pure-black);
+    transition: 0.2s;
+    cursor: pointer;
+}
+.back-btn:hover {
+    background: #eeeeee;
 }

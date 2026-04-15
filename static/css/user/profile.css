@@ -121,6 +121,7 @@ body.profile-body {
 /* MENU BUTTONS */
 .nav-menu {
     margin-top: 40px;
+    margin-bottom: 60px; /* Added more space below the last menu button */
     display: flex;
     flex-direction: column;
     gap: 20px;
@@ -141,6 +142,7 @@ body.profile-body {
 /* FOOTER / LOGOUT */
 .profile-footer {
     padding-bottom: 30px;
+    margin-top: auto; /* Pushes the logout button to the very bottom of the screen */
     display: flex;
     justify-content: center;
 }
@@ -148,10 +150,36 @@ body.profile-body {
 .logout-btn {
     background: var(--action-ruby-red);
     border: none;
-    padding: 12px 35px;
+    padding: 14px 45px; /* Slightly larger for better touch area */
     border-radius: 50px;
     font-weight: 800;
-    font-size: 12px;
+    font-size: 13px;
     cursor: pointer;
     color: #ffffff;
+    text-decoration: none; /* In case you use an <a> tag */
+    display: inline-block;
+}
+/* Hide scrollbar for Chrome, Safari and Opera */
+*::-webkit-scrollbar {
+    display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+* {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+}
+
+body.profile-body {
+    background: var(--bg-antique-cream);
+    overflow-x: hidden; /* Prevents horizontal wiggle */
+}
+
+.main-wrapper {
+    max-width: 420px;
+    margin: auto;
+    min-height: 100vh; /* Changed from height to min-height to allow content growth */
+    display: flex;
+    flex-direction: column;
+    padding: 20px 24px;
 }

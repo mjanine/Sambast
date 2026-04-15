@@ -108,3 +108,17 @@ body, html {
     text-decoration: none;
     font-weight: 700;
 }
+/* Center the Error Message and any Flash Messages */
+#errorMessage, 
+.auth-content > p[style*="color:red"] {
+    width: 100%;
+    text-align: center !important; /* Force center alignment */
+    margin-bottom: 20px;          /* Space between message and first input */
+    font-weight: 700;             /* Match the bold feel of the UI */
+    display: block;
+}
+
+/* Fix for the hidden height issue */
+#errorMessage:empty {
+    display: none;
+}

@@ -120,3 +120,20 @@ body, html {
     text-decoration: none;
     font-weight: 700;
 }
+/* Center Flash and Error Messages */
+.auth-content > p, 
+.auth-content > p[style] {
+    width: 100%;
+    text-align: center !important; /* Force center alignment */
+    margin-top: -20px;            /* Pulls it up slightly from the form */
+    margin-bottom: 20px;          /* Balanced gap above the PIN boxes */
+    font-weight: 700;             /* Makes it legible but not 'thick' */
+    line-height: 1.2;
+}
+
+/* Ensure JS Error Message stays centered */
+#errorMessage {
+    display: block;
+    width: 100%;
+    margin-bottom: 10px;
+}

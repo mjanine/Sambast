@@ -1,5 +1,5 @@
 :root {
-    --bg-antique-cream: #D6D0C5;;
+    --bg-antique-cream: #D6D0C5;
     --fill-natural-beige: #ffffff; 
     --action-ruby-red: #A6171C;
     --text-pure-black: #000000;
@@ -14,6 +14,22 @@
     font-family: 'Inter', sans-serif;
 }
 
+/* Clearfix to prevent container collapse */
+.history-header::after,
+.order-header::after,
+.history-item::after,
+.item-details::after,
+.order-footer::after,
+.history-card::after {
+    content: "";
+    display: table;
+    clear: both;
+}
+.history-header {
+    width: 100%;
+    padding: 20px 16px; /* <--- Adjust overall header height here */
+}
+
 html, body {
     height: 100%;
     overflow: hidden;
@@ -25,20 +41,16 @@ html, body {
     margin: 0 auto;
     background: var(--bg-antique-cream);
     height: 100vh;
-    display: flex;
-    flex-direction: column;
     overflow: hidden;
 }
 
+/* HEADER */
 .history-header {
-    display: flex;
-    align-items: center;
     padding: 20px 16px;
-    gap: 15px;
 }
 
-/* UPDATED BACK BUTTON: Matches circular SVG hover style */
 .back-btn { 
+    float: left; /* Added this to allow the title to slide up */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -53,102 +65,130 @@ html, body {
     z-index: 999;
 }
 
-.back-btn:hover {
-    background: #eeeeee;
-}
-
 .header-title {
+    float: left; /* Keep this floated left */
     font-size: 1.2rem;
     font-weight: 700;
     color: var(--bg-footer-blue);
+    margin-left: 12px;
+    line-height: 36px; /* Match the back-btn height for perfect alignment */
+    display: inline-block;
 }
 
+/* LIST AREA */
 .history-list {
-    flex: 1;
     padding: 0 16px 20px;
     overflow-y: auto;
-    scrollbar-width: none;
+    height: calc(100vh - 80px); /* Manual height for scroll */
 }
 
-.history-list::-webkit-scrollbar {
-    display: none;
-}
-
+/* CARD */
 .history-card {
-    background: var(--fill-natural-beige);
-    border-radius: 4px;
-    padding: 15px;
-    display: flex;
-    gap: 15px;
-    margin-bottom: 20px;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    background: #d9d9d9;
+    border-radius: 2px;
+    padding: 12px 15px;
+    margin-bottom: 15px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+}
+
+.order-header {
+    margin-bottom: 8px;
+}
+
+.order-header h3 {
+    float: left;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.order-status {
+    float: right;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+/* PRODUCT SECTION */
+.history-item {
+    width: 100%;
 }
 
 .item-img-placeholder {
-    width: 90px;
-    height: 110px;
+    float: left;
+    width: 95px;
+    height: 100px;
     background: var(--text-pure-black);
-    border-radius: 4px;
+    border-radius: 2px;
     color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    text-align: center;
+    line-height: 100px; /* Center text */
     font-size: 12px;
 }
 
-.order-info {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
+.item-details {
+    float: right;
+    width: calc(100% - 110px); /* 95px img + 15px gap */
 }
 
 .product-name {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--bg-footer-blue);
-}
-
-.kilos-size {
-    font-size: 14px;
-    color: var(--text-pure-black);
-    margin-bottom: 5px;
+    display: block;
+    width: 100%;
+    font-size: 16px;
+    font-weight: 800;
+    margin-bottom: 2px;
+    color: var(--bg-footer-blue); /* <--- Change this line to your desired color */
 }
 
 .amount-label {
-    font-size: 12px;
-    color: var(--text-pure-black);
+    float: left;
+    font-size: 13px;
 }
 
 .qty-summary {
+    float: right;
+    font-size: 13px;
     text-align: right;
-    font-size: 12px;
-    margin-top: 5px;
-    color: var(--text-pure-black);
 }
 
-.total-amount {
-    text-align: right;
-    font-weight: 800;
-    font-size: 14px;
-    color: var(--text-pure-black);
-}
-
-.order-no {
-    font-size: 11px;
-    margin-top: auto;
-    color: var(--text-pure-black);
-    opacity: 0.6;
-}
-
+/* BUTTON */
 .buy-again-btn {
-    align-self: flex-end;
+    float: right;
+    clear: right; /* Force below qty-summary */
     background: var(--action-ruby-red);
     color: #fff;
     border: none;
-    padding: 8px 20px;
+    padding: 6px 14px;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 800;
     cursor: pointer;
     border-radius: 2px;
+    margin-top: 45px;
+}
+
+/* FOOTER */
+.order-footer {
+    width: 100%;
     margin-top: 10px;
+    border-top: 1px solid rgba(0,0,0,0.05); /* Optional separator */
+    padding-top: 8px;
+}
+
+.order-footer span {
+    float: left;
+    font-size: 11px;
+    color: var(--text-pure-black);
+    opacity: 0.8;
+    font-weight: 600;
+}
+
+.order-footer strong {
+    float: right;
+    font-size: 14px;
+    font-weight: 900;
+    color: var(--text-pure-black);
+}
+
+/* UTILITY */
+.item-details p,
+.item-details h2 {
+    margin: 0;
 }

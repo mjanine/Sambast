@@ -144,3 +144,20 @@ body, html {
     text-decoration: none;
     font-weight: 700;
 }
+/* Center all alert/error messages */
+.auth-content > p[style*="text-align:center"],
+#errorMessage {
+    width: 100% !important;
+    display: block !important;
+    text-align: center !important;
+    margin-top: -20px;            /* Pulls it slightly closer to the text above */
+    margin-bottom: 20px;          /* Creates a gap before the PIN inputs */
+    font-weight: 700;             /* Consistent with the bold UI style */
+    line-height: 1.2;
+}
+
+/* Ensure the JS error placeholder doesn't collapse weirdly */
+#errorMessage:empty {
+    height: 1em;
+    visibility: hidden;
+}
