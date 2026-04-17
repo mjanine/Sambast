@@ -132,3 +132,23 @@ body.progress-body {
     font-size: 16px;
     cursor: pointer;
 }
+.back-btn { 
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    text-decoration: none;
+    color: var(--text-pure-black);
+    transition: 0.2s;
+    cursor: pointer;
+    position: relative;
+    z-index: 999;
+}
+.back-btn:hover {
+    background: #eeeeee;
+}
+.help-btn {
+    display: none;
+}
