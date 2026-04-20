@@ -28,9 +28,16 @@ function render(list) {
                             <button onclick="qtyChange(${p.product_id},-1)">-</button>
                             <span id="qval-${p.product_id}">1</span>
                             <button onclick="qtyChange(${p.product_id},1)">+</button>
-                        </div>
+                        </div><div class="unit-box">
+        <select id="unit-${p.product_id}">
+            <option value="pcs">pcs</option>
+            <option value="kg">kg</option>
+            <option value="g">g</option>
+            <option value="lb">lb</option>
+        </select>
+    </div>
                     </div>
-                    <p class="label-price">Product Amount: ₱${p.price}</p>
+                    <p class="label-price">₱${p.price}</p>
                     <div class="btn-row" onclick="event.stopPropagation()">
                         <button class="cart-act" onclick="addCart(${p.product_id},${p.price})">CART</button>
                         <button class="buy-act" onclick="buyNow(${p.product_id})">BUY</button>
@@ -85,7 +92,8 @@ function addCart(id, pr) {
     localStorage.setItem('cart', JSON.stringify(cart));
     updateRecommendationStatus("Cart updated. Click Generate AI Recommendations.");
 
-    alert(product.name + " added to cart!");
+    showToast("Added " + product.name + " to cart");
+
 }
 
 function buyNow(id) {
@@ -423,4 +431,59 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.key === 'Enter') sendMessage();
         });
     }
+});
+function showToast(message) {
+    const toast = document.getElementById("toast");
+    toast.textContent = message;
+
+    toast.classList.add("show");
+
+    setTimeout(() => {
+        toast.classList.remove("show");
+    }, 5000); // ⬅️ 5 seconds
+}
+function adjustChatWidget() {
+    const bottomBar = document.querySelector('.bottom-bar');
+    const chatBtn = document.querySelector('.chat-widget-toggle');
+    const chatWindow = document.querySelector('.chat-widget-window');
+
+    if (!bottomBar || !chatBtn || !chatWindow) return;
+
+    const isVisible = window.getComputedStyle(bottomBar).display !== 'none';
+
+    if (isVisible) {
+        chatBtn.style.bottom = '80px';
+        chatWindow.style.bottom = '90px';
+    } else {
+        chatBtn.style.bottom = '45px';
+        chatWindow.style.bottom = '50px';
+    }
+}
+
+setInterval(adjustChatWidget, 300);
+
+function openTrackOrders() {
+    window.location.href = "/order-progress?active=true";
+}
+document.addEventListener('DOMContentLoaded', () => {
+    fetch('/orders/history')
+        .then(res => res.json())
+        .then(orders => {
+            const hasActive = orders.some(o => {
+                const status = (o.status || "").toUpperCase();
+                return status !== "COMPLETED" &&
+                       status !== "CANCELLED" &&
+                       status !== "DONE";
+            });
+
+            const icon = document.getElementById("trackOrdersIcon");
+
+            if (icon) {
+                icon.style.display = hasActive ? "flex" : "none";
+            }
+        })
+        .catch(() => {
+            const icon = document.getElementById("trackOrdersIcon");
+            if (icon) icon.style.display = "none";
+        });
 });

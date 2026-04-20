@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cancel Order</title>
+
+    <link rel="stylesheet" href="../../static/css/user/cancelorder.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+
+<body class="cancel-body">
+
+<div class="main-wrapper">
+
+    <header class="cancel-nav">
+        <button class="back-btn" onclick="window.location.href='/order-progress'">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="black" stroke-width="2.5">
+                <path d="M15 18l-6-6 6-6"/>
+            </svg>
+        </button>
+
+        <h3>Cancel Order</h3>
+    </header>
+
+    <main class="cancel-content">
+
+        <div class="cancel-card">
+            <h1>Cancel this order?</h1>
+            <p id="cancelStatusText">
+                You can only cancel if your order is still pending.
+            </p>
+        </div>
+
+        <div class="cancel-card">
+
+            <h3>Order Number</h3>
+            <p id="orderNo">Loading...</p>
+
+            <h3 style="margin-top:12px;">Reason</h3>
+            <select id="cancelReason">
+                <option value="">Select reason</option>
+                <option value="changed_mind">Changed my mind</option>
+                <option value="wrong_order">Ordered wrong item</option>
+                <option value="too_expensive">Too expensive</option>
+                <option value="other">Other</option>
+            </select>
+
+        </div>
+
+    </main>
+
+    <footer class="cancel-footer">
+
+        <button id="cancelBtn" class="cancel-btn">
+            Cancel Order
+        </button>
+
+    </footer>
+
+</div>
+
+<script src="../../static/js/user/cancelorder.js"></script>
+
+</body>
+</html>

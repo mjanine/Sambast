@@ -150,5 +150,27 @@ body.progress-body {
     background: #eeeeee;
 }
 .help-btn {
-    display: none;
+    padding: 8px 14px;
+    border: none;
+    border-radius: 999px;
+
+    background: var(--action-ruby-red);
+    color: #fff;
+
+    font-size: 12px;
+    font-weight: 800;
+
+    cursor: pointer;
+
+    transition: 0.2s ease;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+}
+
+.help-btn:hover {
+    transform: translateY(-1px);
+    opacity: 0.9;
+}
+
+.help-btn:active {
+    transform: scale(0.97);
 }

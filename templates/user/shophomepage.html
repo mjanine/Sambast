@@ -8,19 +8,30 @@
     <link rel="stylesheet" href="../../static/css/user/shophomepage.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
+
 <body class="shop-body">
+    <div id="toast" class="toast">Added to cart ✔</div>
+
 
     <div class="main-wrapper">
         <header class="shop-header">
             <img src="../../static/image/logo.png" alt="Logo" class="logo-img">
             
-            <div class="nav-actions">
+           <div class="nav-actions">
+
+    <div id="trackOrdersIcon" class="status-icon-btn" onclick="openTrackOrders()" style="display:none;">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M12 6v6l4 2"></path>
+    </svg>
+</div>
                 <div class="cart-wrapper" onclick="window.location.href='/cart'">
                     <span class="cart-icon">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
                     </span>
                     <span class="cart-badge" id="cartCount">0</span>
                 </div>
+                
                 <div class="user-avatar" onclick="window.location.href='/profile'" style="cursor:pointer; display:flex; align-items:center;">
                     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 </div>
@@ -131,23 +142,55 @@
             </button>
         </div>
         <div class="modal-body">
-            <div class="status-card">
-                <p class="order-id-label">Order no.: <strong>00000000</strong></p>
+
+    
+
+    <div class="history-card modal-card">
+
+        <div class="order-header">
+            <h3 id="modalOrderId">#00000000</h3>
+            <span class="order-status" id="modalStatusText">PENDING</span>
+        </div>
+
+        <div class="history-item">
+
+            <div class="item-details" style="width:100%">
+
+                <p class="product-name" style="margin-bottom:10px;">
+                    Order Progress
+                </p>
+
                 <div class="progress-tracker">
-                    <div class="step active">
+
+                    <div class="step" id="stepPlaced">
                         <span class="dot"></span>
                         <p>Order Placed</p>
                     </div>
-                    <div class="step processing">
+
+                    <div class="step" id="stepProcessing">
                         <span class="dot"></span>
                         <p>Preparing</p>
                     </div>
-                    <div class="step">
+
+                    <div class="step" id="stepReady">
                         <span class="dot"></span>
                         <p>Ready for Pick-up</p>
                     </div>
+
                 </div>
+
             </div>
+
+        </div>
+
+        <div class="order-footer">
+            <span>Tap outside to close</span>
+            <strong id="modalTime">Just now</strong>
+        </div>
+
+    </div>
+
+</div>
         </div>
     </div>
 </div>

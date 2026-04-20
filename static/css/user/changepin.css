@@ -17,26 +17,41 @@ body, html {
 }
 
 .mobile-container {
-    max-width: 430px;
-    margin: 0 auto;
-    height: 100vh;
+    max-width: 420px;
+    margin: auto;
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
-    padding: env(safe-area-inset-top, 20px) 50px env(safe-area-inset-bottom, 30px);
+    padding: 20px 24px;
+    background: #F9F8F6;
 }
 
-.header {
+.profile-header {
     display: flex;
     align-items: center;
     gap: 15px;
     margin-bottom: 45px;
-    padding-top: 20px;
-    height: auto; /* Resetting the height to match profile */
 }
 .header-title {
     font-size: 20px;
     font-weight: 800;
     color: var(--bg-footer-blue);
+}
+.back-btn { 
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: none;
+    border: none;
+    color: var(--text-pure-black);
+    transition: 0.2s;
+    cursor: pointer;
+}
+.back-btn:hover {
+    background: #eeeeee;
 }
 
 .logo { font-weight: 900; font-size: 1rem; letter-spacing: 0.2px; color: var(--text-pure-black); }
@@ -45,15 +60,16 @@ body, html {
     flex: 1;
     display: flex;
     flex-direction: column;
-    justify-content: center; 
-    align-items: flex-start; 
+    justify-content: flex-start;
+    align-items: flex-start;
     width: 100%;
-    margin-top: -30%; 
+    margin-top: -10px;
+    align-items: flex-start;
 }
-
 .text-group {
-    margin-bottom: 30px;
     width: 100%;
+    margin-bottom: 30px;
+    padding-left: 0;
 }
 
 .main-title {
@@ -89,17 +105,17 @@ body, html {
 
 .pin-container input {
     width: 100%;
-    height: 50px;
-    border-radius: 12px;
-    border: 1px solid var(--text-pure-black);
-    background-color: #FFFFFF;
-    padding: 0 15px;
-    font-size: 1.2rem;
-    font-weight: 600;
-    letter-spacing: 5px; 
-    text-align: center;
+    background: #D6D0C5;
+    padding: 18px 25px;
+    border-radius: 50px;
+    font-size: 14px;
+    font-weight: 700;
+    border: none;
     outline: none;
-    color: var(--text-pure-black); 
+    text-align: center;
+    letter-spacing: 5px;
+    color: #000000;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
 }
 
 
@@ -129,26 +145,4 @@ body, html {
     color: var(--action-ruby-red);
     text-decoration: none;
     font-weight: 700;
-}
-.back-arrow {
-    font-size: 1.5rem;
-    text-decoration: none;
-    color: var(--text-pure-black);
-    font-weight: 700;
-}
-.back-btn { 
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background: none;
-    border: none;
-    color: var(--text-pure-black);
-    transition: 0.2s;
-    cursor: pointer;
-}
-.back-btn:hover {
-    background: #eeeeee;
 }
