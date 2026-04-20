@@ -114,6 +114,27 @@ body.profile-body {
     margin-left: 15px;
 }
 
+.pet-profile-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 10px;
+}
+
+.pet-selector-group {
+    margin-bottom: 0;
+}
+
+.pet-select {
+    appearance: none;
+    cursor: pointer;
+}
+
+.add-pet-btn {
+    background: var(--bg-footer-blue);
+    justify-content: center;
+}
+
 .pet-profile-section .menu-btn {
     background: var(--action-ruby-red);
 }
