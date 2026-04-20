@@ -163,7 +163,7 @@ body.shop-body {
     position: relative;
     width: 100%;
     min-height: 235px;   /* keeps minimum size */
-    height: auto;  /* increased to fit everything */
+    height: 50px;  /* increased to fit everything */
     transition: .5s;
     transform-style: preserve-3d;
 }
@@ -192,7 +192,7 @@ body.shop-body {
     gap: 1px; /* even spacing for all elements */
 
     overflow: hidden;
-    justify-content: space-between;
+    justify-content: flex-start;
 }
 
 
@@ -291,30 +291,22 @@ body.shop-body {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 3px;
 
-    flex: 1;              
+    gap: 2px;
+
+    flex: 1;
     min-width: 0;
 
-    padding: 6px;
+    padding: 3px 6px;  /* reduced height */
     background: #fff;
     border-radius: 999px;
 }
 
-
-
-
-
-
-.qty-box span, .qty-box button {
-    color: #000000; 
-}
-
 .qty-box button {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
 
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
 
     display: flex;
@@ -325,13 +317,10 @@ body.shop-body {
     background: none;
 }
 
-
-
-
 .qty-box span {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
-    min-width: 14px;
+    min-width: 12px;
 }
 
 
@@ -574,9 +563,9 @@ body.shop-body {
 .input-row { order: 2; }
 
 .unit-box {
-    flex: 1;              
+    flex: 1;
     min-width: 0;
-    height: 32px;
+    height: 22px;
 
     background: #fff;
     border-radius: 999px;
@@ -593,7 +582,7 @@ body.shop-body {
     outline: none;
     background: transparent;
     text-align: center;
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 600;
 }
 .toast {
@@ -661,23 +650,30 @@ body.shop-body {
     flex-wrap: wrap;
     width: 100%;
 }
-@media (max-width: 420px) {
-    .flip-inner {
-        height: 230px;
+@media (max-width: 480px) {
+    .front-face,
+    .back-face {
+        justify-content: flex-start;
+        gap: 2px;
     }
 
     .img-box {
-        height: 70px;
+        margin-bottom: 4px;
+    }
+
+    .label-cat {
+        margin-top: 2px;
     }
 
     .label-name {
-        font-size: 10px;
+        margin-top: 2px;
     }
 
-    .select-box select {
-        font-size: 10px;
+    .input-row {
+        margin-top: 4px;
     }
 }
+
 .modal-overlay {
     position: fixed;
     inset: 0;
@@ -720,5 +716,42 @@ body.shop-body {
 .order-status.ready {
     color: #1A323E;
 }
+.select-box select,
+.unit-box select {
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    
+    text-align: center;
+    font-size: 10px;
+    font-weight: 600;
 
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
 
+    padding-right: 18px; /* space for icon */
+    padding-left: 6px;
+}
+
+/* custom dropdown arrow */
+.select-box,
+.unit-box {
+    position: relative;
+}
+
+.select-box::after,
+.unit-box::after {
+    content: "▼";
+    font-size: 8px;
+    position: absolute;
+    right: 6px;   /* move arrow slightly left or right here */
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    opacity: 0.7;
+}
+.bottom-bar {
+    display: none;
+}

@@ -11,21 +11,38 @@ document.addEventListener('DOMContentLoaded', () => {
     const lastItems = JSON.parse(localStorage.getItem('lastOrderItems')) || [];
     const lastOrderNo = localStorage.getItem('lastOrderNo');
 
-    if (totalDisplay) totalDisplay.innerText = `₱${lastTotal || "0"}`;
+    const safeTotal = parseFloat(lastTotal || 0);
+
+if (totalDisplay) {
+    totalDisplay.innerText = `₱${safeTotal.toFixed(2)}`;
+}
     if (orderNoDisplay && lastOrderNo) orderNoDisplay.innerText = lastOrderNo;
 
     // Render items list onto the receipt UI
     if (lastItems.length > 0 && itemsContainer) {
         itemsContainer.innerHTML = '';
         lastItems.forEach(item => {
-            const row = document.createElement('div');
-            row.className = 'detail-item';
-            row.innerHTML = `
-                <span>${item.qty}x ${item.name}</span>
-                <strong>₱${item.price * item.qty}</strong>
-            `;
-            itemsContainer.appendChild(row);
-        });
+
+    const base = item.basePrice ?? item.price ?? 0;
+    const multiplier = item.multiplier ?? 1;
+    const total = base * multiplier * item.qty;
+
+    const row = document.createElement('div');
+    row.className = 'detail-item';
+
+    row.innerHTML = `
+        <div style="display:flex; flex-direction:column;">
+            <span>${item.qty}x ${item.name}</span>
+            <span style="font-size:12px; opacity:0.7;">
+                Unit: ${item.unit || "1 pc"}
+            </span>
+        </div>
+
+        <strong>₱${total.toFixed(2)}</strong>
+    `;
+
+    itemsContainer.appendChild(row);
+});
     }
 
     // Handle "Back to Shop" navigation (Fixes the 404 error)

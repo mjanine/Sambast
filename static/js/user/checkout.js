@@ -13,8 +13,12 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
         listContainer.innerHTML = '';
         checkoutItems.forEach(item => {
-            const itemTotal  = item.price * item.qty;
-            currentTotal    += itemTotal;
+            const base = parseFloat(item.basePrice ?? item.price ?? 0);
+const multiplier = parseFloat(item.multiplier ?? 1);
+const qty = parseInt(item.qty ?? 1);
+
+const itemTotal = base * multiplier * qty;
+            currentTotal += itemTotal;
 
             const div = document.createElement('div');
             div.className = 'checkout-item';
@@ -23,8 +27,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="item-details">
                     <h2 class="item-name">${item.name}</h2>
                     <div class="tag-row">
-                        <span class="mini-tag">Qty: ${item.qty}</span>
-                    </div>
+    <span class="mini-tag">Qty: ${item.qty}</span>
+    <span class="mini-tag">${item.unit}</span>
+</div>
                     <p class="item-amount">Product Amount: ₱${itemTotal}</p>
                 </div>
             `;
@@ -32,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    if (finalTotalDisplay) finalTotalDisplay.innerText = currentTotal === 0 ? "0" : currentTotal;
+    if (finalTotalDisplay) finalTotalDisplay.innerText = currentTotal.toFixed(2);
 
     const placeOrderBtn = document.getElementById('placeOrderBtn');
     if (placeOrderBtn) {
@@ -52,10 +57,19 @@ document.addEventListener('DOMContentLoaded', () => {
             fetch('/orders', {
                 method : 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body   : JSON.stringify({
-                    items          : checkoutItems,
-                    payment_method : paymentMethod
-                })
+                body: JSON.stringify({
+    items: checkoutItems.map(item => ({
+    product_id: item.product_id,
+    name: item.name,
+    qty: item.qty,
+
+    // 🔥 THIS IS THE FIX
+    basePrice: item.basePrice ?? item.price,
+    multiplier: item.multiplier ?? 1,
+    unit: item.unit ?? "1 pc"
+})),
+    payment_method: paymentMethod
+})
             })
             .then(res => res.json())
             .then(data => {

@@ -47,9 +47,9 @@
             </div>
             <div class="filter-bar">
                 <button class="cat-pill active" onclick="filterFn('All', this)">All</button>
-                <button class="cat-pill" onclick="filterFn('Category 1', this)">Category 1</button>
-                <button class="cat-pill" onclick="filterFn('Category 2', this)">Category 2</button>
-                <button class="cat-pill" onclick="filterFn('Category 3', this)">Category 3</button>
+                <button class="cat-pill" onclick="filterFn('Feeds', this)">Feeds</button>
+                <button class="cat-pill" onclick="filterFn('Supplies', this)">Supplies</button>
+                <button class="cat-pill" onclick="filterFn('Medicine', this)">Medicine</button>
             </div>
         </section>
 
@@ -124,7 +124,7 @@
 
         <footer class="bottom-bar">
             <div class="price-info">
-                <p class="sub-text">Subtotal: <span id="subTotal">0000</span></p>
+                <p class="sub-text">Subtotal: <span id="displaySubtotal">0000</span></p>
                 <p class="discount-text">Total Discount: 0000</p>
             </div>
             <button class="checkout-trigger" onclick="window.location.href='/checkout'">

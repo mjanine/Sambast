@@ -118,9 +118,19 @@ html, body {
     background: #C4C4C4;
     border: none;
     border-radius: 15px;
-    padding: 2px 10px;
+
+    padding: 2px 8px;
     font-size: 11px;
-    margin-bottom: 8px;
+
+    margin-bottom: 6px;
+
+    width: 55px;      /* 🔥 smaller + uniform */
+    height: 22px;     /* 🔥 compact */
+
+    display: inline-flex;
+    align-items: center;
+
+    box-sizing: border-box;
 }
 
 .item-price {
@@ -132,18 +142,36 @@ html, body {
 .qty-controls {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 6px;
+
     float: right;
     color: var(--text-pure-black);
+
+    margin-top: 5px;   /* 🔥 pushes it slightly down */
 }
 
 .qty-btn {
     background: none;
     border: none;
-    font-size: 18px;
+    font-size: 14px;   /* smaller than before */
+    font-weight: 700;
+
+    width: 22px;       /* fixed size button */
+    height: 22px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
     cursor: pointer;
-    font-weight: bold;
     color: var(--text-pure-black);
+}
+
+.qty-controls span {
+    font-size: 11px;   /* smaller number */
+    font-weight: 600;
+    min-width: 14px;
+    text-align: center;
 }
 
 .cart-footer {

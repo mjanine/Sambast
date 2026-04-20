@@ -13,17 +13,39 @@ function renderHistory(orders) {
         card.className = 'history-card';
 
         // Create a sub-list for items
-        let itemsHtml = order.items.map(item => `
-            <div class="history-item">
-                <div class="item-img-placeholder">image</div>
-                <div class="item-details">
-                    <h2 class="product-name">${item.name}</h2>
-                    <p class="amount-label">Price: ₱${item.price_at_time}</p>
-                    <p class="qty-summary">Qty: ${item.qty}</p>
-                </div>
-                <button class="buy-again-btn" onclick='buyAgain(${JSON.stringify(item)})'>BUY AGAIN</button>
+        let itemsHtml = order.items.map(item => {
+
+    const base = parseFloat(item.basePrice ?? item.price_at_time ?? item.price ?? 0);
+    const multiplier = parseFloat(item.multiplier ?? 1);
+    const qty = item.qty ?? 1;
+
+    const itemTotal = (base || 0) * (multiplier || 1) * (qty || 1);
+
+    return `
+        <div class="history-item">
+            <div class="item-img-placeholder">image</div>
+
+            <div class="item-details">
+                <h2 class="product-name">
+                    ${item.name} (${item.unit || "1 pc"})
+                </h2>
+
+                <p class="amount-label">
+                    Price: ₱${itemTotal.toFixed(2)}
+                </p>
+
+                <p class="qty-summary">
+                    Qty: ${qty}
+                </p>
             </div>
-        `).join('');
+
+            <button class="buy-again-btn"
+                onclick='buyAgain(${JSON.stringify(item)})'>
+                BUY AGAIN
+            </button>
+        </div>
+    `;
+}).join('');
 
         card.innerHTML = `
             <div class="order-header">
@@ -35,7 +57,18 @@ function renderHistory(orders) {
             </div>
             <div class="order-footer">
                 <span>${new Date(order.created_at).toLocaleString()}</span>
-                <strong>Total: ₱${order.total_price}</strong>
+                <strong>
+    Total: ₱${
+        (order.total_price ??
+        order.items.reduce((sum, item) => {
+    const base = parseFloat(item.basePrice ?? item.price_at_time ?? item.price ?? 0);
+    const multiplier = parseFloat(item.multiplier ?? 1);
+    const qty = parseInt(item.qty ?? 1);
+
+    return sum + (base * multiplier * qty);
+}, 0)
+    ).toFixed(2)}
+</strong>
             </div>
         `;
         container.appendChild(card);
@@ -43,16 +76,23 @@ function renderHistory(orders) {
 }
 
 function buyAgain(item) {
+
     if (!item.product_id) {
         alert("Cannot re-order this item as its ID is missing.");
         return;
     }
+
     const itemToBuy = [{
         product_id: item.product_id,
-        name : item.name,
-        price: item.price_at_time,
-        qty  : item.qty
+        name: item.name,
+        qty: item.qty,
+
+        // FIX: correct pricing + unit preservation
+        basePrice: parseFloat(item.basePrice ?? item.price_at_time ?? item.price ?? 0),
+        multiplier: item.multiplier ?? 1,
+        unit: item.unit ?? "1 pc"
     }];
+
     localStorage.setItem('checkoutItems', JSON.stringify(itemToBuy));
     window.location.href = '/checkout';
 }
