@@ -346,7 +346,7 @@ def get_inventory_context():
     """Fetches all active products to feed to the AI Chatbot."""
     db = get_db()
     try:
-        products = db.execute('SELECT name, category, price, description FROM products WHERE stock_status = 1').fetchall()
+        products = db.execute('SELECT name, category, price, description FROM products WHERE stock_status > 0').fetchall()
         if not products:
             return "No products currently available."
         
@@ -954,7 +954,7 @@ def _fallback_recommendations(db, cart_items, limit=2, exclude_ids=None):
                     IFNULL(SUM(oi.quantity), 0) AS sold_qty
                 FROM products p
                 LEFT JOIN order_items oi ON p.product_id = oi.product_id
-                WHERE p.stock_status = 1
+                WHERE p.stock_status > 0
                   AND p.category IN ({placeholders})
                 GROUP BY
                     p.product_id,
@@ -983,7 +983,7 @@ def _fallback_recommendations(db, cart_items, limit=2, exclude_ids=None):
                 IFNULL(SUM(oi.quantity), 0) AS sold_qty
             FROM products p
             LEFT JOIN order_items oi ON p.product_id = oi.product_id
-            WHERE p.stock_status = 1
+            WHERE p.stock_status > 0
             GROUP BY
                 p.product_id,
                 p.name,
@@ -1066,7 +1066,7 @@ def _build_budget_bundle(db, budget_amount, user_message):
                     IFNULL(SUM(oi.quantity), 0) AS sold_qty
                 FROM products p
                 LEFT JOIN order_items oi ON p.product_id = oi.product_id
-                WHERE p.stock_status = 1
+                WHERE p.stock_status > 0
                   AND p.category IN ({placeholders})
                 GROUP BY p.product_id, p.name, p.price
                 ORDER BY sold_qty DESC, p.price ASC, p.name ASC
@@ -1084,7 +1084,7 @@ def _build_budget_bundle(db, budget_amount, user_message):
                 IFNULL(SUM(oi.quantity), 0) AS sold_qty
             FROM products p
             LEFT JOIN order_items oi ON p.product_id = oi.product_id
-            WHERE p.stock_status = 1
+            WHERE p.stock_status > 0
             GROUP BY p.product_id, p.name, p.price
             ORDER BY sold_qty DESC, p.price ASC, p.name ASC
         ''').fetchall()
@@ -1768,6 +1768,7 @@ def sign_in_page():
 @app.route('/sign-out')
 def sign_out():
     session.pop('user_id', None)
+    session.pop('chat_selected_pet_id', None)
     return redirect(url_for('sign_in_page'))
 
 
@@ -1792,7 +1793,7 @@ def get_products():
     category = request.args.get('category', '').strip()
     search   = request.args.get('search', '').strip()
 
-    query  = 'SELECT * FROM products WHERE stock_status = 1'
+    query  = 'SELECT * FROM products WHERE stock_status > 0'
     params = []
 
     if category:
@@ -1871,7 +1872,7 @@ def api_recommendations():
         if product_names:
             placeholders = ', '.join(['?'] * len(product_names))
             rows = db.execute(
-                f"SELECT * FROM products WHERE name IN ({placeholders}) AND stock_status = 1",
+                f"SELECT * FROM products WHERE name IN ({placeholders}) AND stock_status > 0",
                 tuple(product_names)
             ).fetchall()
             row_by_name = {row['name'].strip().lower(): row for row in rows}
@@ -1929,6 +1930,7 @@ def api_chat():
     
     db = get_db()
     selected_pet = None
+    explicit_pet_selected = False
     pet_context = "No pet profile available."
 
     if 'user_id' in session:
@@ -1942,8 +1944,11 @@ def api_chat():
             (session['user_id'],)
         ).fetchall()
 
+        pet_by_id = {int(pet['id']): pet for pet in pets}
+
         if len(pets) == 1:
             selected_pet = pets[0]
+            session['chat_selected_pet_id'] = int(selected_pet['id'])
         elif len(pets) >= 2:
             msg_lower = user_message.lower()
 
@@ -1953,6 +1958,7 @@ def api_chat():
                 pet_index = int(label_match.group(1)) - 1
                 if 0 <= pet_index < len(pets):
                     selected_pet = pets[pet_index]
+                    explicit_pet_selected = True
 
             # If no label was found, try matching pet names in the user message.
             if not selected_pet:
@@ -1960,10 +1966,25 @@ def api_chat():
                     pet_name = (pet['name'] or '').strip()
                     if pet_name and pet_name.lower() in msg_lower:
                         selected_pet = pet
+                        explicit_pet_selected = True
                         break
+
+            # Reuse previously selected pet in this chat session when message is ambiguous.
+            if not selected_pet:
+                remembered_pet_id = session.get('chat_selected_pet_id')
+                try:
+                    remembered_pet_id = int(remembered_pet_id)
+                except (TypeError, ValueError):
+                    remembered_pet_id = None
+
+                if remembered_pet_id in pet_by_id:
+                    selected_pet = pet_by_id[remembered_pet_id]
 
             if not selected_pet:
                 return jsonify({"response": "Which pet is this for? (e.g., Pet 1 or Pet 2?)"})
+
+            if explicit_pet_selected:
+                session['chat_selected_pet_id'] = int(selected_pet['id'])
 
         if selected_pet:
             pet_context = (
@@ -2013,7 +2034,7 @@ STRICT GUARDRAILS & RULES:
         budget_amount = _extract_budget_amount(user_message)
         if budget_amount is not None:
             inventory_rows = db.execute(
-                "SELECT name, price FROM products WHERE stock_status = 1"
+                "SELECT name, price FROM products WHERE stock_status > 0"
             ).fetchall()
             matched_products = _extract_products_from_text(ai_text, inventory_rows)
             verified_total = sum(price for _, price in matched_products)
