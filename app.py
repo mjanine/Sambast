@@ -11,6 +11,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 import google.generativeai as genai
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.units import inch
+from io import BytesIO
+import csv
 
 # --- AI SETUP ---
 load_dotenv() # Loads the .env file
@@ -69,6 +76,73 @@ if not os.path.exists(UPLOAD_FOLDER):
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def get_log_category(action_text):
+    """
+    Determine the category of an audit log based on the action text.
+    
+    Follows strict priority rules:
+    1. Check for Order Process keywords (highest priority)
+    2. Check for Product Management keywords
+    3. Check for User Activity keywords
+    4. Default to System Actions
+    
+    Args:
+        action_text (str): The action description from the audit log
+        
+    Returns:
+        str: One of 'Order Process', 'Product Management', 'User Activity', or 'System Actions'
+    """
+    if not action_text:
+        return 'System Actions'
+    
+    action_lower = action_text.lower()
+    
+    # ===== ORDER PROCESS =====
+    # Keywords that specifically indicate order-related actions
+    order_keywords = [
+        'order', 'moved', 'shipped', 'delivered', 'cancelled order',
+        'pending order', 'completed order', 'order status', 'order #'
+    ]
+    
+    # Check if action is order-related
+    for keyword in order_keywords:
+        if keyword in action_lower:
+            return 'Order Process'
+    
+    # ===== PRODUCT MANAGEMENT =====
+    # Keywords that specifically indicate product operations
+    product_keywords = [
+        'product',  # Matches: added product, edited product, deleted product, etc.
+        'inventory',  # Inventory management
+        'catalog',  # Product catalog changes
+        'sku',  # SKU/product identification
+        'stock'  # Stock management
+    ]
+    
+    # Check if action is product-related
+    for keyword in product_keywords:
+        if keyword in action_lower:
+            return 'Product Management'
+    
+    # ===== USER ACTIVITY =====
+    # Keywords that specifically indicate user account operations
+    user_activity_keywords = [
+        'login', 'logout', 'sign in', 'sign out',
+        'registration', 'registered', 'account', 'profile',
+        'password', 'verify email', 'otp', 'pin',
+        'email verification', 'phone verification',
+        'user settings', 'account settings'
+    ]
+    
+    # Check if action is user-related
+    for keyword in user_activity_keywords:
+        if keyword in action_lower:
+            return 'User Activity'
+    
+    # ===== DEFAULT: SYSTEM ACTIONS =====
+    # If no specific category matches, classify as System Actions
+    return 'System Actions'
 
 
 @app.route('/product-image/<path:filename>')
@@ -215,8 +289,56 @@ def get_db():
         db = g._database = sqlite3.connect(DATABASE)
         # CRITICAL: This line enables Foreign Key enforcement in SQLite
         db.execute("PRAGMA foreign_keys = ON")
-        db.row_factory = sqlite3.Row  
+        db.row_factory = sqlite3.Row
+        
+        # Run migrations on database connection
+        _run_migrations(db)
     return db
+
+def _run_migrations(db):
+    """Apply any necessary database migrations and backfill data."""
+    try:
+        cursor = db.cursor()
+        
+        # Migration 1: Check if category column exists in audit_logs table
+        cursor.execute("PRAGMA table_info(audit_logs)")
+        columns = [column[1] for column in cursor.fetchall()]
+        
+        if 'category' not in columns:
+            cursor.execute("ALTER TABLE audit_logs ADD COLUMN category TEXT DEFAULT 'System Actions'")
+            db.commit()
+            print("Migration: Added category column to audit_logs table.")
+        
+        # Migration 2: Backfill existing logs with correct categories
+        cursor.execute("SELECT COUNT(*) FROM audit_logs WHERE category IS NULL OR category = ''")
+        null_count = cursor.fetchone()[0]
+        
+        if null_count > 0:
+            print(f"Migration: Backfilling {null_count} audit logs with correct categories...")
+            cursor.execute("SELECT log_id, action_text FROM audit_logs WHERE category IS NULL OR category = ''")
+            logs_to_update = cursor.fetchall()
+            
+            for log_id, action_text in logs_to_update:
+                category = get_log_category(action_text)
+                cursor.execute("UPDATE audit_logs SET category = ? WHERE log_id = ?", (category, log_id))
+            
+            db.commit()
+            print(f"Migration: Successfully backfilled {null_count} audit logs with categories.")
+        
+        # Migration 3: Correct any misclassified logs (optional - recategorize all)
+        # Uncomment if you want to recategorize ALL logs on startup
+        # cursor.execute("SELECT log_id, action_text FROM audit_logs")
+        # all_logs = cursor.fetchall()
+        # updated = 0
+        # for log_id, action_text in all_logs:
+        #     new_category = get_log_category(action_text)
+        #     cursor.execute("UPDATE audit_logs SET category = ? WHERE log_id = ?", (new_category, log_id))
+        #     updated += 1
+        # db.commit()
+        # print(f"Migration: Recategorized {updated} audit logs.")
+        
+    except Exception as e:
+        print(f"Migration error: {e}")
 
 @app.teardown_appcontext
 def close_connection(exception):
@@ -277,6 +399,7 @@ def init_db():
             log_id INTEGER PRIMARY KEY AUTOINCREMENT, 
             admin_id INTEGER, 
             action_text TEXT NOT NULL, 
+            category TEXT DEFAULT 'System Actions', 
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, 
             FOREIGN KEY (admin_id) REFERENCES admin (admin_id))''')
 
@@ -1174,8 +1297,9 @@ def update_order_status(order_id):
     new_status = request.form.get('status')
     db = get_db()
     db.execute('UPDATE orders SET status = ? WHERE order_id = ?', (new_status, order_id))
-    db.execute('INSERT INTO audit_logs (admin_id, action_text) VALUES (?, ?)', 
-               (session['admin_id'], f"Moved Order #{order_id} to {new_status}"))
+    action_text = f"Moved Order #{order_id} to {new_status}"
+    db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
+               (session['admin_id'], action_text, get_log_category(action_text)))
     db.commit()
     return redirect(url_for('admin_orders', status=new_status))
 
@@ -1184,8 +1308,9 @@ def cancel_order(order_id):
     if 'admin_id' not in session: return redirect(url_for('admin_login_page'))
     db = get_db()
     db.execute('UPDATE orders SET status = "Cancelled" WHERE order_id = ?', (order_id,))
-    db.execute('INSERT INTO audit_logs (admin_id, action_text) VALUES (?, ?)', 
-               (session['admin_id'], f"Cancelled Order #{order_id}"))
+    action_text = f"Cancelled Order #{order_id}"
+    db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
+               (session['admin_id'], action_text, get_log_category(action_text)))
     db.commit()
     return redirect(url_for('admin_orders'))
 
@@ -1217,8 +1342,9 @@ def add_product():
     db = get_db()
     db.execute('''INSERT INTO products (name, category, price, stock_status, image_filename, description) 
                   VALUES (?, ?, ?, ?, ?, ?)''', (name, category, price, stock_status, filename, description))
-    db.execute('INSERT INTO audit_logs (admin_id, action_text) VALUES (?, ?)', 
-               (session['admin_id'], f"Added product: {name}"))
+    action_text = f"Added product: {name}"
+    db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
+               (session['admin_id'], action_text, get_log_category(action_text)))
     db.commit()
     flash(f"Product {name} added!")
     return redirect(url_for('admin_inventory'))
@@ -1244,8 +1370,9 @@ def edit_product(product_id):
 
     db.execute('''UPDATE products SET name=?, category=?, price=?, description=?, stock_status=? 
                   WHERE product_id = ?''', (name, category, price, description, stock_status, product_id))
-    db.execute('INSERT INTO audit_logs (admin_id, action_text) VALUES (?, ?)', 
-               (session['admin_id'], f"Edited product ID: {product_id}"))
+    action_text = f"Edited product ID: {product_id}"
+    db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
+               (session['admin_id'], action_text, get_log_category(action_text)))
     db.commit()
     return redirect(url_for('admin_inventory'))
 
@@ -1254,8 +1381,9 @@ def delete_product(product_id):
     if 'admin_id' not in session: return redirect(url_for('admin_login_page'))
     db = get_db()
     db.execute('DELETE FROM products WHERE product_id = ?', (product_id,))
-    db.execute('INSERT INTO audit_logs (admin_id, action_text) VALUES (?, ?)', 
-               (session['admin_id'], f"Deleted product ID: {product_id}"))
+    action_text = f"Deleted product ID: {product_id}"
+    db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
+               (session['admin_id'], action_text, get_log_category(action_text)))
     db.commit()
     return redirect(url_for('admin_inventory'))
 
@@ -1629,9 +1757,238 @@ def admin_audit():
         ORDER BY timestamp DESC
     ''').fetchall()
     
-    return render_template('admin/audit_logs.html', logs=logs)
+    # Get unique categories for filter dropdown
+    categories = db.execute('''
+        SELECT DISTINCT category FROM audit_logs ORDER BY category ASC
+    ''').fetchall()
+    category_list = [cat[0] for cat in categories] if categories else []
+    
+    return render_template('admin/audit_logs.html', logs=logs, categories=category_list)
 
-# Check if this is in your app.py!
+@app.route('/api/admin/audit-logs', methods=['GET'])
+def api_audit_logs():
+    """API endpoint to get filtered audit logs"""
+    if 'admin_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    db = get_db()
+    search_query = request.args.get('search', '').strip()
+    category_filter = request.args.get('category', '').strip()
+    date_from = request.args.get('date_from', '').strip()
+    date_to = request.args.get('date_to', '').strip()
+    
+    # Build base query
+    query = '''
+        SELECT audit_logs.*, admin.username 
+        FROM audit_logs 
+        LEFT JOIN admin ON audit_logs.admin_id = admin.admin_id 
+        WHERE 1=1
+    '''
+    params = []
+    
+    if search_query:
+        query += ' AND (audit_logs.action_text LIKE ? OR admin.username LIKE ?)'
+        search_pattern = f'%{search_query}%'
+        params.extend([search_pattern, search_pattern])
+    
+    if category_filter:
+        query += ' AND audit_logs.category = ?'
+        params.append(category_filter)
+    
+    if date_from:
+        query += ' AND DATE(audit_logs.timestamp) >= ?'
+        params.append(date_from)
+    
+    if date_to:
+        query += ' AND DATE(audit_logs.timestamp) <= ?'
+        params.append(date_to)
+    
+    query += ' ORDER BY audit_logs.timestamp DESC'
+    
+    logs = db.execute(query, params).fetchall()
+    
+    # Convert logs to dictionaries for JSON serialization
+    logs_list = []
+    for log in logs:
+        logs_list.append({
+            'log_id': log['log_id'],
+            'username': log['username'],
+            'action_text': log['action_text'],
+            'category': log['category'],
+            'timestamp': log['timestamp']
+        })
+    
+    return jsonify(logs_list)
+
+@app.route('/admin/audit/export/csv')
+def export_audit_csv():
+    """Export audit logs as CSV with applied filters"""
+    if 'admin_id' not in session:
+        return redirect(url_for('admin_login_page'))
+    
+    db = get_db()
+    search_query = request.args.get('search', '').strip()
+    category_filter = request.args.get('category', '').strip()
+    date_from = request.args.get('date_from', '').strip()
+    date_to = request.args.get('date_to', '').strip()
+    
+    # Build query
+    query = '''
+        SELECT audit_logs.*, admin.username 
+        FROM audit_logs 
+        LEFT JOIN admin ON audit_logs.admin_id = admin.admin_id 
+        WHERE 1=1
+    '''
+    params = []
+    
+    if search_query:
+        query += ' AND (audit_logs.action_text LIKE ? OR admin.username LIKE ?)'
+        search_pattern = f'%{search_query}%'
+        params.extend([search_pattern, search_pattern])
+    
+    if category_filter:
+        query += ' AND audit_logs.category = ?'
+        params.append(category_filter)
+    
+    if date_from:
+        query += ' AND DATE(audit_logs.timestamp) >= ?'
+        params.append(date_from)
+    
+    if date_to:
+        query += ' AND DATE(audit_logs.timestamp) <= ?'
+        params.append(date_to)
+    
+    query += ' ORDER BY audit_logs.timestamp DESC'
+    
+    logs = db.execute(query, params).fetchall()
+    
+    # Generate CSV string
+    csv_string = "Date,User,Action,Category\n"
+    for log in logs:
+        date = log['timestamp'] if log['timestamp'] else ''
+        user = log['username'] or 'System'
+        action = log['action_text']
+        category = log['category']
+        
+        # Escape quotes in fields
+        date = date.replace('"', '""')
+        user = user.replace('"', '""')
+        action = action.replace('"', '""')
+        category = category.replace('"', '""')
+        
+        csv_string += f'"{date}","{user}","{action}","{category}"\n'
+    
+    return csv_string, 200, {
+        'Content-Disposition': 'attachment; filename=audit_logs.csv',
+        'Content-Type': 'text/csv'
+    }
+
+@app.route('/admin/audit/export/pdf')
+def export_audit_pdf():
+    """Export audit logs as PDF with applied filters"""
+    if 'admin_id' not in session:
+        return redirect(url_for('admin_login_page'))
+    
+    db = get_db()
+    search_query = request.args.get('search', '').strip()
+    category_filter = request.args.get('category', '').strip()
+    date_from = request.args.get('date_from', '').strip()
+    date_to = request.args.get('date_to', '').strip()
+    
+    # Build query
+    query = '''
+        SELECT audit_logs.*, admin.username 
+        FROM audit_logs 
+        LEFT JOIN admin ON audit_logs.admin_id = admin.admin_id 
+        WHERE 1=1
+    '''
+    params = []
+    
+    if search_query:
+        query += ' AND (audit_logs.action_text LIKE ? OR admin.username LIKE ?)'
+        search_pattern = f'%{search_query}%'
+        params.extend([search_pattern, search_pattern])
+    
+    if category_filter:
+        query += ' AND audit_logs.category = ?'
+        params.append(category_filter)
+    
+    if date_from:
+        query += ' AND DATE(audit_logs.timestamp) >= ?'
+        params.append(date_from)
+    
+    if date_to:
+        query += ' AND DATE(audit_logs.timestamp) <= ?'
+        params.append(date_to)
+    
+    query += ' ORDER BY audit_logs.timestamp DESC'
+    
+    logs = db.execute(query, params).fetchall()
+    
+    # Create PDF in memory
+    pdf_buffer = BytesIO()
+    doc = SimpleDocTemplate(pdf_buffer, pagesize=A4, topMargin=0.5*inch, bottomMargin=0.5*inch)
+    elements = []
+    
+    # Add title
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=20,
+        textColor=colors.HexColor('#a6171c'),
+        spaceAfter=20,
+        alignment=1  # Center
+    )
+    title = Paragraph("SAMBAST AUDIT LOGS REPORT", title_style)
+    elements.append(title)
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # Add metadata
+    export_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    metadata = Paragraph(f"<b>Report Generated:</b> {export_date}<br/><b>Total Records:</b> {len(logs)}", styles['Normal'])
+    elements.append(metadata)
+    elements.append(Spacer(1, 0.2*inch))
+    
+    # Prepare table data
+    table_data = [['Date', 'User', 'Action', 'Category']]
+    
+    for log in logs:
+        table_data.append([
+            log['timestamp'][:16] if log['timestamp'] else '',  # Format timestamp
+            log['username'] or 'System',
+            log['action_text'][:50] + '...' if len(log['action_text']) > 50 else log['action_text'],
+            log['category']
+        ])
+    
+    # Create table
+    if len(table_data) > 1:
+        table = Table(table_data, colWidths=[1.5*inch, 1.2*inch, 2*inch, 1.3*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#a6171c')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+        ]))
+        elements.append(table)
+    else:
+        elements.append(Paragraph("No audit logs found.", styles['Normal']))
+    
+    # Build PDF
+    doc.build(elements)
+    
+    pdf_buffer.seek(0)
+    return pdf_buffer.getvalue(), 200, {
+        'Content-Disposition': 'attachment; filename=audit_logs.pdf',
+        'Content-Type': 'application/pdf'
+    }
+
 @app.route('/admin/profile')
 def admin_profile():
     if 'admin_id' not in session:

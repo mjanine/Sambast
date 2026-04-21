@@ -50,22 +50,81 @@
     <section class="audit">
         <div class="audit-header">
             <h1>AUDIT LOGS</h1>
-            <button class="audit-btn">
+            <button id="downloadBtn" class="audit-btn">
                 <svg class="download-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 3v12"></path>
                     <path d="M7 10l5 5 5-5"></path>
                     <path d="M5 21h14"></path>
                 </svg>
-                DOWNLOAD CSV
+                DOWNLOAD
             </button>
         </div>
 
-        <div class="search-box">
-            <input type="text" id="auditSearch" placeholder="Search Logs...">
-            <svg class="search-mag" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2">
-                <circle cx="11" cy="11" r="8"/>
-                <path d="m21 21-4.3-4.3"/>
-            </svg>
+        <!-- Download Format Modal -->
+        <div id="downloadModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Select Download Format</h2>
+                    <button id="closeModalBtn" class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>Choose the format for your audit logs export:</p>
+                    <div class="format-options">
+                        <button id="downloadCsvOption" class="format-btn">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 3v12"></path>
+                                <path d="M7 10l5 5 5-5"></path>
+                                <path d="M5 21h14"></path>
+                            </svg>
+                            <span>CSV</span>
+                            <small>For spreadsheets and data analysis</small>
+                        </button>
+                        <button id="downloadPdfOption" class="format-btn">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 3v12"></path>
+                                <path d="M7 10l5 5 5-5"></path>
+                                <path d="M5 21h14"></path>
+                            </svg>
+                            <span>PDF</span>
+                            <small>Professional report format</small>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="search-filter-container">
+            <div class="search-box">
+                <input type="text" id="auditSearch" placeholder="Search Logs...">
+                <svg class="search-mag" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="m21 21-4.3-4.3"/>
+                </svg>
+            </div>
+
+            <div class="filter-section">
+                <div class="filter-group">
+                    <label for="categoryFilter">Category:</label>
+                    <select id="categoryFilter">
+                        <option value="">All Categories</option>
+                        {% for category in categories %}
+                        <option value="{{ category }}">{{ category }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="dateFromFilter">From:</label>
+                    <input type="date" id="dateFromFilter">
+                </div>
+
+                <div class="filter-group">
+                    <label for="dateToFilter">To:</label>
+                    <input type="date" id="dateToFilter">
+                </div>
+
+                <button id="resetFiltersBtn" class="reset-btn">Reset Filters</button>
+            </div>
         </div>
 
         <div id="auditContainer">
@@ -73,6 +132,7 @@
             <div class="audit-card">
                 <div class="card-header">
                     <strong>{{ log.username }}</strong>
+                    <span class="category-tag" data-category="{{ log.category }}">{{ log.category }}</span>
                     <span class="date">{{ log.timestamp }}</span>
                 </div>
 

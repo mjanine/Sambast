@@ -353,12 +353,304 @@ h1 {
     font-size: clamp(0.875rem, 2vw, 1rem);
 }
 
+/* EXPORT BUTTONS */
+
+.export-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.export-buttons .audit-btn {
+    padding: clamp(0.4rem, 1rem, 0.5rem) clamp(0.6rem, 2vw, 0.75rem);
+    font-size: clamp(0.625rem, 1.5vw, 0.75rem);
+}
+
+/* MODAL STYLES */
+
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.2s ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.modal-content {
+    background: white;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 450px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    animation: slideUp 0.3s ease-out;
+    z-index: 1001;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+}
+
+.modal-header h2 {
+    margin: 0;
+    color: #1A323E;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 28px;
+    color: #999;
+    cursor: pointer;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: 0.2s;
+}
+
+.modal-close:hover {
+    color: #333;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.modal-body p {
+    margin: 0 0 16px 0;
+    color: #666;
+    font-size: 14px;
+}
+
+.format-options {
+    display: flex;
+    gap: 12px;
+    flex-direction: column;
+}
+
+.format-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+}
+
+.format-btn:hover {
+    border-color: #a6171c;
+    background: #fafafa;
+}
+
+.format-btn:active {
+    transform: scale(0.98);
+}
+
+.format-btn svg {
+    flex-shrink: 0;
+    color: #a6171c;
+}
+
+.format-btn span {
+    display: block;
+    font-weight: 600;
+    color: #1A323E;
+    font-size: 15px;
+}
+
+.format-btn small {
+    display: block;
+    color: #999;
+    font-size: 12px;
+    font-weight: 400;
+}
+
+/* SEARCH & FILTER CONTAINER */
+
+.search-filter-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+/* FILTER SECTION */
+
+.filter-section {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    background: #F9F8F6;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.filter-group label {
+    font-size: clamp(0.625rem, 1.5vw, 0.75rem);
+    font-weight: 600;
+    color: #1A323E;
+}
+
+.filter-group select,
+.filter-group input[type="date"] {
+    padding: 8px 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: clamp(0.75rem, 1.8vw, 0.875rem);
+    color: #1A323E;
+    background: white;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.filter-group select:hover,
+.filter-group input[type="date"]:hover {
+    border-color: #a6171c;
+}
+
+.filter-group select:focus,
+.filter-group input[type="date"]:focus {
+    outline: none;
+    border-color: #a6171c;
+    box-shadow: 0 0 0 2px rgba(166, 23, 28, 0.1);
+}
+
+.filter-group select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%231A323E' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 28px;
+}
+
+.reset-btn {
+    padding: 8px 16px;
+    border: 1px solid #999;
+    border-radius: 6px;
+    background: white;
+    color: #1A323E;
+    font-weight: 600;
+    font-size: clamp(0.625rem, 1.5vw, 0.75rem);
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.reset-btn:hover,
+.reset-btn:active {
+    background: #f0f0f0;
+    border-color: #666;
+}
+
+/* CATEGORY TAG */
+
+.category-tag {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: clamp(0.625rem, 1.5vw, 0.75rem);
+    font-weight: 600;
+    white-space: nowrap;
+    color: white;
+    background: #a6171c;
+}
+
+.category-tag[data-category="Order Process"] {
+    background: #4CAF50;
+}
+
+.category-tag[data-category="Product Management"] {
+    background: #2196F3;
+}
+
+.category-tag[data-category="User Activity"] {
+    background: #FF9800;
+}
+
+.category-tag[data-category="System Actions"] {
+    background: #9C27B0;
+}
+
 /* RESPONSIVE DESIGN */
 
 /* Small phones (320px - 480px) */
 @media (max-width: 480px) {
     html {
         font-size: 14px;
+    }
+
+    .modal-content {
+        width: 95%;
+        max-width: 100%;
+    }
+
+    .modal-header h2 {
+        font-size: 16px;
+    }
+
+    .format-btn {
+        flex-direction: column;
+        text-align: center;
+        padding: 12px;
+    }
+
+    .format-btn svg {
+        width: 32px;
+        height: 32px;
+    }
+
+    .format-btn span {
+        font-size: 14px;
+    }
+
+    .format-btn small {
+        font-size: 11px;
     }
 
     .header {
@@ -423,6 +715,41 @@ h1 {
         height: 16px;
     }
 
+    .filter-section {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 10px;
+        gap: 10px;
+    }
+
+    .filter-group {
+        width: 100%;
+    }
+
+    .filter-group select,
+    .filter-group input[type="date"] {
+        width: 100%;
+        padding: 8px 10px;
+        font-size: 12px;
+    }
+
+    .reset-btn {
+        width: 100%;
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+
+    .export-buttons {
+        flex-direction: column;
+    }
+
+    .export-buttons .audit-btn {
+        width: 100%;
+        justify-content: center;
+        padding: 8px 10px;
+        font-size: 12px;
+    }
+
     .audit-card {
         padding: 10px;
         margin-bottom: 10px;
@@ -431,14 +758,23 @@ h1 {
 
     .card-header {
         margin-bottom: 8px;
+        flex-wrap: wrap;
+        gap: 6px;
     }
 
     .card-header strong {
         font-size: 13px;
     }
 
+    .category-tag {
+        font-size: 11px;
+        padding: 3px 8px;
+    }
+
     .date {
         font-size: 11px;
+        width: 100%;
+        text-align: left;
     }
 
     .card-body {
