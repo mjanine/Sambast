@@ -1289,7 +1289,33 @@ def admin_orders():
         orders = db.execute('SELECT * FROM orders WHERE status = ? ORDER BY created_at DESC', (status_filter,)).fetchall()
     else:
         orders = db.execute('SELECT * FROM orders ORDER BY created_at DESC').fetchall()
-    return render_template('admin/orders.html', orders=orders, active_filter=status_filter)
+
+    # Attach line items per order so the admin view matches the transaction receipt.
+    enriched_orders = []
+    for order in orders:
+        order_data = dict(order)
+        items = db.execute('''
+            SELECT
+                oi.quantity,
+                oi.price_at_time,
+                p.name AS product_name
+            FROM order_items oi
+            LEFT JOIN products p ON p.product_id = oi.product_id
+            WHERE oi.order_id = ?
+            ORDER BY oi.item_id ASC
+        ''', (order['order_id'],)).fetchall()
+
+        order_data['items'] = [
+            {
+                'product_name': item['product_name'] or 'Unknown Product',
+                'quantity': item['quantity'],
+                'subtotal': (item['quantity'] or 0) * (item['price_at_time'] or 0)
+            }
+            for item in items
+        ]
+        enriched_orders.append(order_data)
+
+    return render_template('admin/orders.html', orders=enriched_orders, active_filter=status_filter)
 
 @app.route('/admin/orders/<int:order_id>/status', methods=['POST'])
 def update_order_status(order_id):

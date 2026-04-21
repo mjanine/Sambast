@@ -78,8 +78,13 @@
             <hr>
             
             <div class="products">
-                <div>Product name 10kg × 1 <span>₱ 1234</span></div>
-                <div>Product name 5kg × 3 <span>₱ 3000</span></div>
+                {% if order['items'] %}
+                    {% for item in order['items'] %}
+                    <div>{{ item['product_name'] }} × {{ item['quantity'] }} <span>₱ {{ '%.2f'|format(item['subtotal']) }}</span></div>
+                    {% endfor %}
+                {% else %}
+                    <div>No items found for this order.</div>
+                {% endif %}
             </div>
             
             <div class="actions">
