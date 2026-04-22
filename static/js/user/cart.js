@@ -101,10 +101,19 @@ function renderCart() {
             </p>
 
             <div class="qty-controls">
-                <button class="qty-btn" onclick="updateQty(${index}, -1)">-</button>
-                <span>${item.qty}</span>
-                <button class="qty-btn" onclick="updateQty(${index}, 1)">+</button>
-            </div>
+    <button class="qty-btn" onclick="updateQty(${index}, -1)">-</button>
+
+    <input 
+        type="number"
+        class="qty-input"
+        value="${item.qty}"
+        min="1"
+        onchange="setQty(${index}, this.value)"
+    >
+
+    <button class="qty-btn" onclick="updateQty(${index}, 1)">+</button>
+</div>
+
         </div>
     `;
 
@@ -112,20 +121,57 @@ function renderCart() {
 });
     calculateTotal();
 }
+function setQty(index, value) {
+    let qty = parseInt(value);
+
+    if (isNaN(qty) || qty < 1) qty = 1;
+
+    cart[index].qty = qty;
+
+    localStorage.setItem('cart', JSON.stringify(cart));
+
+    renderCart();
+    calculateTotal();
+    syncSelectAllCheckbox(); // 🔥 ADD THIS
+}
+
+
 
 function updateQty(index, delta) {
-    cart[index].qty += delta;
+    if (!cart[index]) return;
+
+    cart[index].qty = (cart[index].qty || 1) + delta;
+
     if (cart[index].qty < 1) {
         cart.splice(index, 1);
-        selectedItems.delete(index);
+        selectedItems.clear();
     }
+
     localStorage.setItem('cart', JSON.stringify(cart));
+
     renderCart();
+    calculateTotal();
+    syncSelectAllCheckbox(); // 🔥 ADD THIS
 }
+
+function toggleSelectAll(checkbox) {
+    selectedItems.clear();
+
+    if (checkbox.checked) {
+        cart.forEach(item => {
+            selectedItems.add(item.product_id + "_" + item.unit);
+        });
+    }
+
+    renderCart();
+    calculateTotal();
+    syncSelectAllCheckbox();
+}
+
+
 
 function toggleSelect(index) {
     const id = cart[index].product_id + "_" + cart[index].unit;
-
 
     if (selectedItems.has(id)) {
         selectedItems.delete(id);
@@ -134,7 +180,9 @@ function toggleSelect(index) {
     }
 
     calculateTotal();
+    syncSelectAllCheckbox(); // 🔥 ADD THIS
 }
+
 
 
 function calculateTotal() {
@@ -163,6 +211,36 @@ function calculateTotal() {
 
     document.getElementById('displayDiscount').innerText = "0000";
     document.getElementById('selectedCount').innerText = selectedItems.size;
+    syncSelectAllCheckbox();
+
+}
+
+function syncSelectAllCheckbox() {
+    const checkbox = document.getElementById('selectAllCheckbox');
+    if (!checkbox) return;
+
+    if (cart.length === 0) {
+        checkbox.checked = false;
+        checkbox.indeterminate = false;
+        return;
+    }
+
+    const selectedCount = cart.filter(item =>
+        selectedItems.has(item.product_id + "_" + item.unit)
+    ).length;
+
+    if (selectedCount === 0) {
+        checkbox.checked = false;
+        checkbox.indeterminate = false;
+    } 
+    else if (selectedCount === cart.length) {
+        checkbox.checked = true;
+        checkbox.indeterminate = false;
+    } 
+    else {
+        // 🔥 partial selection state (VERY IMPORTANT UX)
+        checkbox.checked = false;
+    }
 }
 
 
@@ -183,7 +261,9 @@ document.querySelector('.checkout-btn').addEventListener('click', () => {
 
     localStorage.setItem('checkoutItems', JSON.stringify(selectedData));
     window.location.href = '/checkout';
+
 });
+
 
 function getUnitOptions(product) {
     if (!product) return [{ label: "1 pc", value: "1 pc", multiplier: 1 }];
@@ -308,9 +388,20 @@ function updateUnit(index) {
 
     const currentItem = cart[index];
 
+    const oldId = currentItem.product_id + "_" + currentItem.unit;
+
     currentItem.unit = newUnit;
     currentItem.multiplier = newMultiplier;
 
+    const newId = currentItem.product_id + "_" + newUnit;
+
+    // 🔥 FIX: update selection key
+    if (selectedItems.has(oldId)) {
+        selectedItems.delete(oldId);
+        selectedItems.add(newId);
+    }
+
+    // merge duplicates
     const duplicateIndex = cart.findIndex((item, i) =>
         i !== index &&
         item.product_id === currentItem.product_id &&
@@ -320,12 +411,16 @@ function updateUnit(index) {
     if (duplicateIndex !== -1) {
         cart[duplicateIndex].qty += currentItem.qty;
         cart.splice(index, 1);
-        selectedItems.clear(); // 🔥 important
+
+        selectedItems.clear(); // safer reset after merge
     }
 
     localStorage.setItem('cart', JSON.stringify(cart));
+
     renderCart();
+    calculateTotal();
 }
+
 
 function toggleEditMode() {
     editMode = !editMode;

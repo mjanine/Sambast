@@ -161,7 +161,12 @@ html, body {
     font-weight: 800;
     cursor: pointer;
     border-radius: 2px;
-    margin-top: 45px;
+    margin-top: -30px;   /* 👈 pulls it upward */
+    margin-bottom: 6px;
+}
+.history-item {
+    width: 100%;
+    margin-bottom: 10px; /* 👈 adds space between items */
 }
 
 /* FOOTER */
@@ -191,4 +196,11 @@ html, body {
 .item-details p,
 .item-details h2 {
     margin: 0;
+}
+::-webkit-scrollbar {
+    display: none;
+}
+
+* {
+    scrollbar-width: none;
 }

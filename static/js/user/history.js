@@ -54,10 +54,7 @@ function renderHistory(orders) {
                 </p>
             </div>
 
-            <button class="buy-again-btn"
-                onclick='buyAgain(${JSON.stringify(item)})'>
-                BUY AGAIN
-            </button>
+           
         </div>
     `;
 }).join('');
@@ -70,7 +67,13 @@ function renderHistory(orders) {
             <div class="order-body">
                 ${itemsHtml}
             </div>
+<button class="buy-again-btn"
+    data-order='${encodeURIComponent(JSON.stringify(order))}'
+    onclick="buyAgainOrder(this.dataset.order)">
+    BUY AGAIN
+</button>
             <div class="order-footer">
+            
                 <span>${new Date(order.created_at).toLocaleString()}</span>
                 <strong>
     Total: ₱${
@@ -89,6 +92,22 @@ function renderHistory(orders) {
         container.appendChild(card);
     });
 }
+function buyAgainOrder(orderEncoded) {
+    const order = JSON.parse(decodeURIComponent(orderEncoded));
+
+    const itemsToBuy = order.items.map(item => ({
+        product_id: item.product_id,
+        name: item.name,
+        qty: item.qty,
+        basePrice: parseFloat(item.basePrice ?? item.price_at_time ?? item.price ?? 0),
+        multiplier: item.multiplier ?? 1,
+        unit: item.unit ?? "1 pc"
+    }));
+
+    localStorage.setItem('checkoutItems', JSON.stringify(itemsToBuy));
+    window.location.href = '/checkout';
+}
+
 
 function buyAgain(item) {
 

@@ -52,14 +52,14 @@
         <div id="editFooter" class="edit-footer">
 
     <div class="edit-left">
-        <button type="button" class="edit-action-btn" onclick="selectAllItems()">
-            All
-        </button>
 
-        <button type="button" class="edit-action-btn" onclick="deselectAllItems()">
-            None
-        </button>
-    </div>
+    <label class="all-toggle">
+        <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this)">
+        All
+    </label>
+
+</div>
+
 
     <button type="button" class="remove-btn" onclick="removeSelected()">
         Remove
