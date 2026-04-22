@@ -420,6 +420,123 @@ h1 {
     margin-top: 12px;
 }
 
+.ai-insights-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.ai-insight-block {
+    border: 1px solid #E8E3D9;
+}
+
+.ai-insight-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+
+.ai-insight-header h3 {
+    font-size: 16px;
+    color: #1A323E;
+    font-weight: 700;
+}
+
+.ai-source-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    background: #efe6d8;
+    color: #7b1f24;
+}
+
+.ai-chart-grid {
+    margin-top: 14px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+}
+
+.ai-chart-card {
+    min-height: auto;
+}
+
+.ai-chart-canvas-wrap {
+    position: relative;
+    width: 100%;
+    height: 300px;
+}
+
+.ai-chart-card canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+
+.ai-table-grid {
+    margin-top: 14px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 12px;
+}
+
+.ai-table-card {
+    overflow: hidden;
+}
+
+.ai-table-wrapper {
+    overflow-x: auto;
+    margin-top: 8px;
+}
+
+.ai-data-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 320px;
+    font-size: 12px;
+}
+
+.ai-data-table th,
+.ai-data-table td {
+    border-bottom: 1px solid #E8E3D9;
+    padding: 8px;
+    text-align: left;
+    color: #1A323E;
+}
+
+.ai-data-table th {
+    background: #f4efe6;
+    font-weight: 700;
+}
+
+.ai-empty-text {
+    font-size: 12px;
+    color: #666;
+    margin-top: 6px;
+}
+
+.ai-recommendations-card {
+    margin-top: 14px;
+}
+
+.ai-recommendations-list {
+    list-style: disc;
+    padding-left: 18px;
+    font-size: 13px;
+    color: #1A323E;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
 /* RESPONSIVE DESIGN */
 
 /* Small phones (320px - 480px) */
@@ -547,6 +664,22 @@ h1 {
 
     .ai-summary-text {
         font-size: 12px;
+    }
+
+    .ai-chart-card {
+        min-height: auto;
+    }
+
+    .ai-chart-canvas-wrap {
+        height: 210px;
+    }
+
+    .ai-chart-card canvas {
+        height: 100% !important;
+    }
+
+    .ai-table-grid {
+        grid-template-columns: 1fr;
     }
 }
 

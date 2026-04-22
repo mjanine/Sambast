@@ -3,6 +3,19 @@ const sidebar = document.getElementById("sidebar");
 const closeBtn = document.getElementById("closeBtn");
 const overlay = document.getElementById("overlay");
 
+const summaryElement = document.getElementById("ai-summary-text");
+const generateBtn = document.getElementById("generate-insights-btn");
+const aiInsightsContainer = document.getElementById("aiInsightsContainer");
+
+const summaryCacheKey = "cached_business_summary";
+const summaryV2CacheKey = "cached_business_summary_v2";
+
+let topProductsChartInstance = null;
+const aiChartInstances = [];
+
+const MAX_CHART_POINTS = 24;
+const MAX_TABLE_ROWS = 40;
+
 // --- SIDEBAR LOGIC ---
 if (menuBtn) {
     menuBtn.onclick = () => {
@@ -25,125 +38,477 @@ if (overlay) {
     }
 }
 
+function toCurrency(value) {
+    const numeric = Number(value || 0);
+    return `₱${numeric.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function clearNode(node) {
+    if (!node) return;
+    while (node.firstChild) {
+        node.removeChild(node.firstChild);
+    }
+}
+
+function setSummaryText(text) {
+    if (!summaryElement) return;
+    summaryElement.innerText = text || "Insights unavailable at the moment.";
+}
+
+function destroyAiCharts() {
+    while (aiChartInstances.length > 0) {
+        const chart = aiChartInstances.pop();
+        try {
+            chart.destroy();
+        } catch (_) {
+            // Ignore chart destruction failures.
+        }
+    }
+}
+
+function normalizeChartSpec(rawSpec) {
+    if (!rawSpec || typeof rawSpec !== "object") return null;
+
+    const id = String(rawSpec.id || "").trim();
+    const title = String(rawSpec.title || "").trim();
+    const type = String(rawSpec.type || "bar").trim().toLowerCase();
+    const labels = Array.isArray(rawSpec.labels) ? rawSpec.labels.map(label => String(label)) : [];
+    const datasetsRaw = Array.isArray(rawSpec.datasets) ? rawSpec.datasets : [];
+    const cappedLabels = labels.slice(0, MAX_CHART_POINTS);
+
+    const datasets = datasetsRaw
+        .filter(dataset => dataset && typeof dataset === "object")
+        .map(dataset => {
+            const label = String(dataset.label || "Series").trim();
+            const data = Array.isArray(dataset.data)
+                ? dataset.data.map(item => Number(item || 0))
+                : [];
+            return {
+                label,
+                data: data.slice(0, MAX_CHART_POINTS),
+                backgroundColor: dataset.backgroundColor || "#a6171c",
+                borderColor: dataset.borderColor || dataset.backgroundColor || "#a6171c"
+            };
+        });
+
+    if (!id || !title || cappedLabels.length === 0 || datasets.length === 0) return null;
+
+    return {
+        id,
+        title,
+        type,
+        labels: cappedLabels,
+        datasets,
+        meta: rawSpec.meta && typeof rawSpec.meta === "object" ? rawSpec.meta : {}
+    };
+}
+
+function renderChartSection(spec, parentContainer) {
+    if (!parentContainer) return;
+
+    const normalized = normalizeChartSpec(spec);
+    if (!normalized) return;
+
+    const chartCard = document.createElement("div");
+    chartCard.className = "card ai-chart-card";
+
+    const title = document.createElement("div");
+    title.className = "small-title";
+    title.textContent = normalized.title;
+    chartCard.appendChild(title);
+
+    const canvasWrap = document.createElement("div");
+    canvasWrap.className = "ai-chart-canvas-wrap";
+    chartCard.appendChild(canvasWrap);
+
+    const canvas = document.createElement("canvas");
+    canvas.id = `ai-chart-${normalized.id}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    canvasWrap.appendChild(canvas);
+
+    parentContainer.appendChild(chartCard);
+
+    const chartType = ["line", "bar", "doughnut", "pie"].includes(normalized.type)
+        ? normalized.type
+        : "bar";
+
+    const chartConfig = {
+        type: chartType,
+        data: {
+            labels: normalized.labels,
+            datasets: normalized.datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: "bottom"
+                }
+            }
+        }
+    };
+
+    if (chartType === "bar" && normalized.meta && normalized.meta.index_axis === "y") {
+        chartConfig.options.indexAxis = "y";
+    }
+
+    if (chartType === "line" || chartType === "bar") {
+        const yPrefix = normalized.meta && normalized.meta.y_prefix
+            ? String(normalized.meta.y_prefix)
+            : "";
+        chartConfig.options.scales = {
+            x: {
+                ticks: {
+                    autoSkip: true,
+                    maxTicksLimit: 12
+                }
+            },
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: value => `${yPrefix}${Number(value).toLocaleString()}`
+                }
+            }
+        };
+    }
+
+    const chartInstance = new Chart(canvas, chartConfig);
+    aiChartInstances.push(chartInstance);
+}
+
+function normalizeTableBlock(rawBlock) {
+    if (!rawBlock || typeof rawBlock !== "object") return null;
+
+    const id = String(rawBlock.id || "").trim();
+    const title = String(rawBlock.title || "").trim();
+    const columns = Array.isArray(rawBlock.columns)
+        ? rawBlock.columns.map(column => String(column || "").trim()).filter(Boolean)
+        : [];
+    const rowsRaw = Array.isArray(rawBlock.rows) ? rawBlock.rows : [];
+    const rows = rowsRaw
+        .filter(row => Array.isArray(row))
+        .map(row => row.map(cell => String(cell ?? "")))
+        .slice(0, MAX_TABLE_ROWS);
+
+    if (!id || !title || columns.length === 0) return null;
+    return { id, title, columns, rows };
+}
+
+function renderTableBlock(block, parentContainer) {
+    if (!parentContainer) return;
+
+    const normalized = normalizeTableBlock(block);
+    if (!normalized) return;
+
+    const tableCard = document.createElement("div");
+    tableCard.className = "card ai-table-card";
+
+    const title = document.createElement("div");
+    title.className = "small-title";
+    title.textContent = normalized.title;
+    tableCard.appendChild(title);
+
+    if (normalized.rows.length === 0) {
+        const emptyMessage = document.createElement("p");
+        emptyMessage.className = "ai-empty-text";
+        emptyMessage.textContent = "No data available for this section.";
+        tableCard.appendChild(emptyMessage);
+        parentContainer.appendChild(tableCard);
+        return;
+    }
+
+    const tableWrapper = document.createElement("div");
+    tableWrapper.className = "ai-table-wrapper";
+
+    const table = document.createElement("table");
+    table.className = "ai-data-table";
+
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    normalized.columns.forEach(column => {
+        const th = document.createElement("th");
+        th.textContent = column;
+        headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    normalized.rows.forEach(row => {
+        const tr = document.createElement("tr");
+        row.forEach(cell => {
+            const td = document.createElement("td");
+            td.textContent = cell;
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    tableWrapper.appendChild(table);
+    tableCard.appendChild(tableWrapper);
+    parentContainer.appendChild(tableCard);
+}
+
+function renderRecommendations(recommendations, parentContainer) {
+    if (!parentContainer) return;
+
+    const recoList = Array.isArray(recommendations)
+        ? recommendations.map(item => String(item || "").trim()).filter(Boolean)
+        : [];
+
+    if (recoList.length === 0) return;
+
+    const recoCard = document.createElement("div");
+    recoCard.className = "card ai-recommendations-card";
+
+    const title = document.createElement("div");
+    title.className = "small-title";
+    title.textContent = "Recommendations";
+    recoCard.appendChild(title);
+
+    const ul = document.createElement("ul");
+    ul.className = "ai-recommendations-list";
+
+    recoList.forEach(item => {
+        const li = document.createElement("li");
+        li.textContent = item;
+        ul.appendChild(li);
+    });
+
+    recoCard.appendChild(ul);
+    parentContainer.appendChild(recoCard);
+}
+
+function renderAiInsightsBlock(analyticsPayload, source) {
+    if (!aiInsightsContainer) return;
+
+    destroyAiCharts();
+    clearNode(aiInsightsContainer);
+
+    if (!analyticsPayload || typeof analyticsPayload !== "object") return;
+
+    const block = document.createElement("div");
+    block.className = "card ai-insight-block";
+
+    const header = document.createElement("div");
+    header.className = "ai-insight-header";
+
+    const heading = document.createElement("h3");
+    heading.textContent = analyticsPayload.headline || "AI Analytics Overview";
+    header.appendChild(heading);
+
+    if (source) {
+        const sourceBadge = document.createElement("span");
+        sourceBadge.className = "ai-source-badge";
+        sourceBadge.textContent = String(source).replaceAll("_", " ");
+        header.appendChild(sourceBadge);
+    }
+
+    block.appendChild(header);
+
+    const summary = document.createElement("p");
+    summary.className = "ai-summary-text";
+    summary.textContent = analyticsPayload.summary || "No interpretation available.";
+    block.appendChild(summary);
+
+    const chartGrid = document.createElement("div");
+    chartGrid.className = "ai-chart-grid";
+    const chartSpecs = Array.isArray(analyticsPayload.chart_specs) ? analyticsPayload.chart_specs : [];
+    chartSpecs.forEach(spec => renderChartSection(spec, chartGrid));
+    if (chartGrid.children.length > 0) {
+        block.appendChild(chartGrid);
+    }
+
+    const tableGrid = document.createElement("div");
+    tableGrid.className = "ai-table-grid";
+    const tableBlocks = Array.isArray(analyticsPayload.table_blocks) ? analyticsPayload.table_blocks : [];
+    tableBlocks.forEach(table => renderTableBlock(table, tableGrid));
+    if (tableGrid.children.length > 0) {
+        block.appendChild(tableGrid);
+    }
+
+    renderRecommendations(analyticsPayload.recommendations || [], block);
+
+    aiInsightsContainer.appendChild(block);
+}
+
+function renderLowStockList(stats) {
+    const lowStockList = document.getElementById("low-stock-list");
+    if (!lowStockList) return;
+
+    clearNode(lowStockList);
+    const tiers = stats && stats.low_stock_tiers ? stats.low_stock_tiers : null;
+
+    const addListItem = text => {
+        const li = document.createElement("li");
+        li.textContent = text;
+        lowStockList.appendChild(li);
+    };
+
+    if (tiers) {
+        (tiers.critical || []).forEach(item => addListItem(`CRITICAL: ${item.name} (${item.stock} left)`));
+        (tiers.warning || []).forEach(item => addListItem(`WARNING: ${item.name} (${item.stock} left)`));
+        (tiers.watch || []).forEach(item => addListItem(`WATCH: ${item.name} (${item.stock} left)`));
+    } else if (Array.isArray(stats.low_stock) && stats.low_stock.length > 0) {
+        stats.low_stock.forEach(item => addListItem(`LOW STOCK: ${item}`));
+    }
+
+    if (!lowStockList.firstChild) {
+        addListItem("All items well-stocked.");
+    }
+}
+
+async function loadStats() {
+    try {
+        const statsResponse = await fetch("/api/admin/stats");
+        if (!statsResponse.ok) throw new Error("Stats fetch failed");
+
+        const stats = await statsResponse.json();
+
+        const totalRevenueEl = document.getElementById("total-revenue");
+        const totalOrdersEl = document.getElementById("total-orders");
+        const avgOrderValueEl = document.getElementById("avg-order-value");
+        const statusSummary = document.getElementById("status-summary");
+
+        if (totalRevenueEl) totalRevenueEl.innerText = stats.revenue || toCurrency(0);
+        if (totalOrdersEl) totalOrdersEl.innerText = stats.order_count ?? 0;
+        if (avgOrderValueEl) avgOrderValueEl.innerText = stats.avg_value || toCurrency(0);
+        if (statusSummary) statusSummary.innerText = `${stats.order_count ?? 0} active orders in system.`;
+
+        renderLowStockList(stats);
+    } catch (error) {
+        console.error("Dashboard Stats Error:", error);
+    }
+}
+
+async function loadTopProductsChart() {
+    try {
+        const topProductsResponse = await fetch("/api/admin/top-products");
+        if (!topProductsResponse.ok) throw new Error("Top products fetch failed");
+
+        const topProductsData = await topProductsResponse.json();
+        const ctx = document.getElementById("topProductsChart");
+        if (!ctx) return;
+
+        if (topProductsChartInstance) {
+            topProductsChartInstance.destroy();
+            topProductsChartInstance = null;
+        }
+
+        const labels = Array.isArray(topProductsData) ? topProductsData.map(item => item.name) : [];
+        const values = Array.isArray(topProductsData) ? topProductsData.map(item => Number(item.count || 0)) : [];
+
+        if (labels.length === 0) return;
+
+        topProductsChartInstance = new Chart(ctx, {
+            type: "bar",
+            data: {
+                labels,
+                datasets: [{
+                    label: "Quantity Sold",
+                    data: values,
+                    backgroundColor: "#a6171c",
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error("Top Products Chart Error:", error);
+    }
+}
+
+async function loadLegacySummaryOnly() {
+    const response = await fetch("/api/admin/business-summary");
+    if (!response.ok) throw new Error("Legacy summary fetch failed");
+
+    const data = await response.json();
+    const summaryText = data.summary || data.text || data.message || "Insights loaded.";
+    setSummaryText(summaryText);
+    sessionStorage.setItem(summaryCacheKey, summaryText);
+    sessionStorage.setItem("ai_business_summary", summaryText);
+}
+
+async function generateStructuredInsights() {
+    const response = await fetch("/api/admin/business-summary-v2");
+    if (!response.ok) throw new Error("Structured insights fetch failed");
+
+    const payload = await response.json();
+    const analytics = payload && payload.analytics ? payload.analytics : null;
+    if (!analytics || typeof analytics !== "object") {
+        throw new Error("Invalid structured analytics payload");
+    }
+
+    setSummaryText(analytics.summary || "Insights loaded.");
+    renderAiInsightsBlock(analytics, payload.source || "ai");
+
+    sessionStorage.setItem(summaryV2CacheKey, JSON.stringify(payload));
+    sessionStorage.setItem(summaryCacheKey, analytics.summary || "Insights loaded.");
+    sessionStorage.setItem("ai_business_summary", analytics.summary || "Insights loaded.");
+}
+
+function restoreCachedInsights() {
+    const cachedV2 = sessionStorage.getItem(summaryV2CacheKey);
+    if (cachedV2) {
+        try {
+            const payload = JSON.parse(cachedV2);
+            const analytics = payload && payload.analytics ? payload.analytics : null;
+            if (analytics && typeof analytics === "object") {
+                setSummaryText(analytics.summary || "Insights loaded.");
+                renderAiInsightsBlock(analytics, payload.source || "cache");
+                return;
+            }
+        } catch (_) {
+            // Ignore bad cache parse and continue with legacy cache.
+        }
+    }
+
+    const cachedSummary = sessionStorage.getItem(summaryCacheKey) || sessionStorage.getItem("ai_business_summary");
+    if (cachedSummary) {
+        setSummaryText(cachedSummary);
+    }
+}
+
 // --- DASHBOARD DATA LOADING ---
 document.addEventListener("DOMContentLoaded", async () => {
-    
-    // 1. AI EXECUTIVE SUMMARY LOGIC
-    const summaryElement = document.getElementById("ai-summary-text");
-    const generateBtn = document.getElementById("generate-insights-btn");
-    const summaryCacheKey = "cached_business_summary";
+    restoreCachedInsights();
 
-    if (summaryElement && generateBtn && generateBtn.dataset.listenerBound !== "true") {
+    await loadStats();
+    await loadTopProductsChart();
+
+    if (generateBtn && generateBtn.dataset.listenerBound !== "true") {
         generateBtn.dataset.listenerBound = "true";
-        const cachedSummary = sessionStorage.getItem(summaryCacheKey) || sessionStorage.getItem("ai_business_summary");
-        if (cachedSummary) {
-            summaryElement.innerText = cachedSummary;
-            sessionStorage.setItem(summaryCacheKey, cachedSummary);
-        }
 
         generateBtn.addEventListener("click", async () => {
             const originalBtnText = generateBtn.innerText;
             generateBtn.disabled = true;
             generateBtn.innerText = "Loading...";
-            summaryElement.innerText = "Generating insights...";
-            try {
-                const cachedSummaryOnClick = sessionStorage.getItem(summaryCacheKey);
-                if (cachedSummaryOnClick) {
-                    summaryElement.innerText = cachedSummaryOnClick;
-                    return;
-                }
+            setSummaryText("Generating insights...");
 
-                const response = await fetch("/api/admin/business-summary");
-                if (response.ok) {
-                    const data = await response.json();
-                    const summaryText = data.summary || data.text || data.message || "Insights loaded.";
-                    summaryElement.innerText = summaryText;
-                    sessionStorage.setItem(summaryCacheKey, summaryText);
-                    sessionStorage.setItem("ai_business_summary", summaryText);
-                } else {
-                    summaryElement.innerText = "Insights unavailable at the moment.";
-                }
+            try {
+                await generateStructuredInsights();
             } catch (error) {
-                summaryElement.innerText = "Insights unavailable.";
-                console.error("AI Insights Error:", error);
+                console.error("Structured AI Insights Error:", error);
+                try {
+                    await loadLegacySummaryOnly();
+                } catch (legacyError) {
+                    console.error("Legacy AI Insights Error:", legacyError);
+                    setSummaryText("Insights unavailable at the moment.");
+                }
             } finally {
                 generateBtn.disabled = false;
                 generateBtn.innerText = originalBtnText;
             }
         });
-    }
-
-    // 2. HARD STATS LOGIC (Revenue, Orders, etc.)
-    try {
-        const statsResponse = await fetch("/api/admin/stats");
-        if (!statsResponse.ok) throw new Error("Stats fetch failed");
-        
-        const stats = await statsResponse.json();
-
-        // Inject the numbers into the HTML IDs
-        if (document.getElementById("total-revenue")) 
-            document.getElementById("total-revenue").innerText = stats.revenue;
-        
-        if (document.getElementById("total-orders")) 
-            document.getElementById("total-orders").innerText = stats.order_count;
-        
-        if (document.getElementById("avg-order-value")) 
-            document.getElementById("avg-order-value").innerText = stats.avg_value;
-
-        // Update the status summary text
-        const statusSummary = document.getElementById("status-summary");
-        if (statusSummary) {
-            statusSummary.innerText = `${stats.order_count} active orders in system.`;
-        }
-
-        // Update Low Stock List
-        const lowStockList = document.getElementById("low-stock-list");
-        if (lowStockList) {
-            if (stats.low_stock && stats.low_stock.length > 0) {
-                lowStockList.innerHTML = stats.low_stock.map(item => `<li>⚠️ ${item}</li>`).join('');
-            } else {
-                lowStockList.innerHTML = "<li>✅ All items well-stocked.</li>";
-            }
-        }
-
-    } catch (error) {
-        console.error("Dashboard Stats Error:", error);
-    }
-
-    // 3. TOP PRODUCTS CHART LOGIC
-    try {
-        const topProductsResponse = await fetch("/api/admin/top-products");
-        if (topProductsResponse.ok) {
-            const topProductsData = await topProductsResponse.json();
-            const ctx = document.getElementById('topProductsChart');
-            
-            if (ctx && topProductsData.length > 0) {
-                const labels = topProductsData.map(item => item.name);
-                const data = topProductsData.map(item => item.count);
-                
-                new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: 'Quantity Sold',
-                            data: data,
-                            backgroundColor: '#a6171c',
-                            borderWidth: 1
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        scales: {
-                            y: {
-                                beginAtZero: true
-                            }
-                        }
-                    }
-                });
-            }
-        }
-    } catch (error) {
-        console.error("Top Products Chart Error:", error);
     }
 });

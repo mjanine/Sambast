@@ -5,7 +5,7 @@ import re
 import threading
 import time
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, render_template, g, request, session, redirect, url_for, flash, jsonify, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -48,6 +48,7 @@ AI_CACHE_TTL_SECONDS = {
     'inventory_insights': 15 * 60,
     'inventory_forecast': 15 * 60,
     'business_summary': 15 * 60,
+    'business_summary_v2': 15 * 60,
     'recommendations': 10 * 60,
     'chat': 2 * 60,
     'pet_lifestyle': 30 * 60,
@@ -57,6 +58,7 @@ AI_RATE_LIMIT_CONFIG = {
     'inventory_insights': {'limit': 10, 'window_seconds': 60},
     'inventory_forecast': {'limit': 10, 'window_seconds': 60},
     'business_summary': {'limit': 10, 'window_seconds': 60},
+    'business_summary_v2': {'limit': 10, 'window_seconds': 60},
     'recommendations': {'limit': 20, 'window_seconds': 60},
     'chat': {'limit': 25, 'window_seconds': 60},
 }
@@ -1009,6 +1011,450 @@ def _normalize_forecast_payload(payload):
             'rows': normalized_rows[:50]
         },
         'recommendations': recommendations[:12]
+    }
+
+def _apply_priority_order(items, priority_ids):
+    if not isinstance(items, list):
+        return []
+
+    if not isinstance(priority_ids, list) or not priority_ids:
+        return items
+
+    index_by_id = {
+        str(item.get('id')): item
+        for item in items
+        if isinstance(item, dict) and item.get('id')
+    }
+
+    ordered = []
+    seen = set()
+
+    for item_id in priority_ids:
+        normalized_id = str(item_id or '').strip()
+        if not normalized_id or normalized_id in seen:
+            continue
+        matched = index_by_id.get(normalized_id)
+        if matched:
+            ordered.append(matched)
+            seen.add(normalized_id)
+
+    for item in items:
+        item_id = str(item.get('id', '')).strip() if isinstance(item, dict) else ''
+        if item_id and item_id in seen:
+            continue
+        ordered.append(item)
+
+    return ordered
+
+def _analytics_signature(db):
+    order_stats = db.execute('''
+        SELECT
+            IFNULL(COUNT(*), 0) AS total_orders,
+            IFNULL(MAX(created_at), '') AS latest_order_at
+        FROM orders
+    ''').fetchone()
+
+    status_rows = db.execute('''
+        SELECT status, COUNT(*) AS count
+        FROM orders
+        GROUP BY status
+        ORDER BY status ASC
+    ''').fetchall()
+
+    status_counts = {
+        str(row['status'] or 'Unknown'): int(row['count'] or 0)
+        for row in status_rows
+    }
+
+    product_stats = db.execute('''
+        SELECT
+            COUNT(*) AS product_count,
+            IFNULL(MAX(product_id), 0) AS latest_product_id
+        FROM products
+    ''').fetchone()
+
+    return {
+        'total_orders': int(order_stats['total_orders']) if order_stats else 0,
+        'latest_order_at': order_stats['latest_order_at'] if order_stats else '',
+        'status_counts': status_counts,
+        'product_count': int(product_stats['product_count']) if product_stats else 0,
+        'latest_product_id': int(product_stats['latest_product_id']) if product_stats else 0
+    }
+
+def _get_least_selling_products_data(db, limit=5):
+    fulfilled_placeholders = _sql_placeholders(ANALYTICS_FULFILLED_STATUSES)
+    rows = db.execute(f'''
+        SELECT
+            p.product_id,
+            p.name,
+            IFNULL(SUM(CASE WHEN o.status IN ({fulfilled_placeholders}) THEN oi.quantity ELSE 0 END), 0) AS count,
+            IFNULL(SUM(CASE WHEN o.status IN ({fulfilled_placeholders}) THEN oi.quantity * oi.price_at_time ELSE 0 END), 0) AS revenue
+        FROM products p
+        LEFT JOIN order_items oi ON p.product_id = oi.product_id
+        LEFT JOIN orders o ON oi.order_id = o.order_id
+        GROUP BY p.product_id
+        ORDER BY count ASC, revenue ASC, p.name ASC
+        LIMIT ?
+    ''', ANALYTICS_FULFILLED_STATUSES + ANALYTICS_FULFILLED_STATUSES + (int(limit),)).fetchall()
+
+    return [
+        {
+            'product_id': int(row['product_id']),
+            'name': row['name'],
+            'count': int(row['count'] or 0),
+            'revenue': float(row['revenue'] or 0)
+        }
+        for row in rows
+    ]
+
+def _get_revenue_trend_data(db, daily_points=14, weekly_points=12):
+    fulfilled_placeholders = _sql_placeholders(ANALYTICS_FULFILLED_STATUSES)
+
+    daily_points = max(1, int(daily_points))
+    weekly_points = max(1, int(weekly_points))
+
+    daily_rows = db.execute(f'''
+        SELECT
+            DATE(created_at) AS period,
+            IFNULL(SUM(total_price), 0) AS revenue
+        FROM orders
+        WHERE status IN ({fulfilled_placeholders})
+          AND DATE(created_at) >= DATE('now', ?)
+        GROUP BY DATE(created_at)
+        ORDER BY DATE(created_at) ASC
+    ''', ANALYTICS_FULFILLED_STATUSES + (f'-{daily_points - 1} day',)).fetchall()
+
+    revenue_by_day = {
+        str(row['period']): float(row['revenue'] or 0)
+        for row in daily_rows
+        if row['period']
+    }
+
+    daily_data = []
+    start_day = datetime.now().date() - timedelta(days=daily_points - 1)
+    for day_offset in range(daily_points):
+        day_key = (start_day + timedelta(days=day_offset)).isoformat()
+        daily_data.append({
+            'period': day_key,
+            'revenue': float(revenue_by_day.get(day_key, 0.0))
+        })
+
+    weekly_rows = db.execute(f'''
+        SELECT
+            strftime('%Y-W%W', created_at) AS period,
+            IFNULL(SUM(total_price), 0) AS revenue
+        FROM orders
+        WHERE status IN ({fulfilled_placeholders})
+          AND DATE(created_at) >= DATE('now', ?)
+        GROUP BY strftime('%Y-W%W', created_at)
+        ORDER BY period ASC
+    ''', ANALYTICS_FULFILLED_STATUSES + (f'-{(weekly_points * 7) - 1} day',)).fetchall()
+
+    weekly_data = [
+        {
+            'period': str(row['period']),
+            'revenue': float(row['revenue'] or 0)
+        }
+        for row in weekly_rows
+        if row['period']
+    ]
+
+    return {
+        'daily': daily_data,
+        'weekly': weekly_data
+    }
+
+def _get_order_status_distribution_data(db):
+    rows = db.execute('''
+        SELECT
+            COALESCE(NULLIF(TRIM(status), ''), 'Unknown') AS status,
+            COUNT(*) AS count
+        FROM orders
+        GROUP BY COALESCE(NULLIF(TRIM(status), ''), 'Unknown')
+        ORDER BY count DESC, status ASC
+    ''').fetchall()
+
+    return [
+        {
+            'status': row['status'],
+            'count': int(row['count'] or 0)
+        }
+        for row in rows
+    ]
+
+def _get_category_performance_data(db):
+    fulfilled_placeholders = _sql_placeholders(ANALYTICS_FULFILLED_STATUSES)
+
+    rows = db.execute(f'''
+        SELECT
+            COALESCE(NULLIF(TRIM(p.category), ''), 'Uncategorized') AS category,
+            COUNT(DISTINCT p.product_id) AS product_count,
+            IFNULL(SUM(CASE WHEN o.status IN ({fulfilled_placeholders}) THEN oi.quantity ELSE 0 END), 0) AS quantity_sold,
+            IFNULL(SUM(CASE WHEN o.status IN ({fulfilled_placeholders}) THEN oi.quantity * oi.price_at_time ELSE 0 END), 0) AS revenue
+        FROM products p
+        LEFT JOIN order_items oi ON p.product_id = oi.product_id
+        LEFT JOIN orders o ON oi.order_id = o.order_id
+        GROUP BY COALESCE(NULLIF(TRIM(p.category), ''), 'Uncategorized')
+        ORDER BY revenue DESC, quantity_sold DESC, category ASC
+    ''', ANALYTICS_FULFILLED_STATUSES + ANALYTICS_FULFILLED_STATUSES).fetchall()
+
+    return [
+        {
+            'category': row['category'],
+            'product_count': int(row['product_count'] or 0),
+            'quantity_sold': int(row['quantity_sold'] or 0),
+            'revenue': float(row['revenue'] or 0)
+        }
+        for row in rows
+    ]
+
+def _get_deterministic_analytics_bundle(db):
+    fulfilled_placeholders = _sql_placeholders(ANALYTICS_FULFILLED_STATUSES)
+    active_placeholders = _sql_placeholders(ANALYTICS_ACTIVE_STATUSES)
+
+    totals_row = db.execute(
+        f"SELECT IFNULL(SUM(total_price), 0) AS revenue, COUNT(*) AS completed_orders FROM orders WHERE status IN ({fulfilled_placeholders})",
+        ANALYTICS_FULFILLED_STATUSES
+    ).fetchone()
+    active_row = db.execute(
+        f"SELECT COUNT(*) AS active_orders FROM orders WHERE status IN ({active_placeholders})",
+        ANALYTICS_ACTIVE_STATUSES
+    ).fetchone()
+
+    return {
+        'totals': {
+            'completed_revenue': float(totals_row['revenue'] or 0),
+            'completed_orders': int(totals_row['completed_orders'] or 0),
+            'active_orders': int(active_row['active_orders'] or 0) if active_row else 0
+        },
+        'least_selling_products': _get_least_selling_products_data(db),
+        'revenue_trend': _get_revenue_trend_data(db),
+        'order_status_distribution': _get_order_status_distribution_data(db),
+        'category_performance': _get_category_performance_data(db)
+    }
+
+def _build_default_analytics_recommendations(bundle):
+    recommendations = []
+
+    least_selling = bundle.get('least_selling_products', [])
+    if least_selling and least_selling[0].get('count', 0) == 0:
+        recommendations.append(
+            'Prioritize markdowns or bundle offers for zero-sale products to improve turnover.'
+        )
+
+    distribution = bundle.get('order_status_distribution', [])
+    pending_count = next((item['count'] for item in distribution if item['status'] == 'Pending'), 0)
+    completed_count = bundle.get('totals', {}).get('completed_orders', 0)
+    if pending_count > completed_count:
+        recommendations.append(
+            'Pending orders currently exceed completed orders; review fulfillment bottlenecks.'
+        )
+
+    category_perf = bundle.get('category_performance', [])
+    if category_perf:
+        top_category = category_perf[0]
+        recommendations.append(
+            f"Protect momentum in {top_category['category']} by ensuring replenishment and upsell visibility."
+        )
+
+    if not recommendations:
+        recommendations.append('Maintain current sales and fulfillment cadence while monitoring weekly revenue movement.')
+
+    return recommendations[:4]
+
+def _build_structured_analytics_payload(bundle):
+    totals = bundle.get('totals', {})
+    daily = bundle.get('revenue_trend', {}).get('daily', [])
+    weekly = bundle.get('revenue_trend', {}).get('weekly', [])
+    least = bundle.get('least_selling_products', [])
+    status_dist = bundle.get('order_status_distribution', [])
+    category_perf = bundle.get('category_performance', [])
+
+    daily_chart = daily[-30:]
+    weekly_chart = weekly[-20:]
+    least_chart = least[:12]
+    least_table = least[:25]
+    status_chart = status_dist[:12]
+    category_chart = category_perf[:12]
+    category_table = category_perf[:30]
+
+    chart_specs = [
+        {
+            'id': 'daily_revenue_trend',
+            'title': 'Daily Revenue Trend (Last 14 Days)',
+            'type': 'line',
+            'labels': [entry['period'] for entry in daily_chart],
+            'datasets': [
+                {
+                    'label': 'Revenue (PHP)',
+                    'data': [round(float(entry['revenue']), 2) for entry in daily_chart],
+                    'backgroundColor': '#a6171c',
+                    'borderColor': '#a6171c'
+                }
+            ],
+            'meta': {
+                'y_prefix': '₱'
+            }
+        },
+        {
+            'id': 'weekly_revenue_trend',
+            'title': 'Weekly Revenue Trend',
+            'type': 'bar',
+            'labels': [entry['period'] for entry in weekly_chart],
+            'datasets': [
+                {
+                    'label': 'Revenue (PHP)',
+                    'data': [round(float(entry['revenue']), 2) for entry in weekly_chart],
+                    'backgroundColor': '#f1c045',
+                    'borderColor': '#f1c045'
+                }
+            ],
+            'meta': {
+                'y_prefix': '₱'
+            }
+        },
+        {
+            'id': 'order_status_distribution',
+            'title': 'Order Status Distribution',
+            'type': 'doughnut',
+            'labels': [entry['status'] for entry in status_chart],
+            'datasets': [
+                {
+                    'label': 'Orders',
+                    'data': [int(entry['count']) for entry in status_chart],
+                    'backgroundColor': ['#a6171c', '#1A323E', '#f1c045', '#5c946e', '#b26d8a', '#6f5f9b']
+                }
+            ]
+        },
+        {
+            'id': 'category_revenue_performance',
+            'title': 'Category Performance (Revenue)',
+            'type': 'bar',
+            'labels': [entry['category'] for entry in category_chart],
+            'datasets': [
+                {
+                    'label': 'Revenue (PHP)',
+                    'data': [round(float(entry['revenue']), 2) for entry in category_chart],
+                    'backgroundColor': '#1A323E',
+                    'borderColor': '#1A323E'
+                }
+            ],
+            'meta': {
+                'y_prefix': '₱'
+            }
+        },
+        {
+            'id': 'least_selling_products',
+            'title': 'Least Selling Products',
+            'type': 'bar',
+            'labels': [entry['name'] for entry in least_chart],
+            'datasets': [
+                {
+                    'label': 'Units Sold',
+                    'data': [int(entry['count']) for entry in least_chart],
+                    'backgroundColor': '#b26d8a',
+                    'borderColor': '#b26d8a'
+                }
+            ],
+            'meta': {
+                'index_axis': 'y'
+            }
+        }
+    ]
+
+    table_blocks = [
+        {
+            'id': 'least_selling_products_table',
+            'title': 'Least Selling Products',
+            'columns': ['Product', 'Units Sold', 'Revenue'],
+            'rows': [
+                [
+                    item['name'],
+                    int(item['count']),
+                    f"₱{float(item['revenue']):,.2f}"
+                ]
+                for item in least_table
+            ]
+        },
+        {
+            'id': 'category_performance_table',
+            'title': 'Category Performance',
+            'columns': ['Category', 'Products', 'Units Sold', 'Revenue'],
+            'rows': [
+                [
+                    item['category'],
+                    int(item['product_count']),
+                    int(item['quantity_sold']),
+                    f"₱{float(item['revenue']):,.2f}"
+                ]
+                for item in category_table
+            ]
+        }
+    ]
+
+    summary = (
+        f"Completed revenue is ₱{float(totals.get('completed_revenue', 0)):,.2f} across "
+        f"{int(totals.get('completed_orders', 0))} completed order(s), with "
+        f"{int(totals.get('active_orders', 0))} active order(s) in the pipeline."
+    )
+
+    return {
+        'headline': 'AI Analytics Overview',
+        'summary': summary,
+        'chart_specs': chart_specs,
+        'table_blocks': table_blocks,
+        'recommendations': _build_default_analytics_recommendations(bundle)
+    }
+
+def _normalize_business_summary_v2_interpretation(payload):
+    if not isinstance(payload, dict):
+        return None
+
+    headline = str(payload.get('headline', '')).strip()
+    summary = str(payload.get('summary', '')).strip()
+
+    chart_priority_raw = payload.get('chart_priority', [])
+    if not isinstance(chart_priority_raw, list):
+        chart_priority_raw = []
+
+    chart_priority = []
+    for entry in chart_priority_raw:
+        entry_text = str(entry or '').strip()
+        if not entry_text:
+            continue
+        if not re.match(r'^[a-zA-Z0-9_-]+$', entry_text):
+            continue
+        chart_priority.append(entry_text)
+
+    table_priority_raw = payload.get('table_priority', [])
+    if not isinstance(table_priority_raw, list):
+        table_priority_raw = []
+
+    table_priority = []
+    for entry in table_priority_raw:
+        entry_text = str(entry or '').strip()
+        if not entry_text:
+            continue
+        if not re.match(r'^[a-zA-Z0-9_-]+$', entry_text):
+            continue
+        table_priority.append(entry_text)
+
+    recommendations_raw = payload.get('recommendations', [])
+    if not isinstance(recommendations_raw, list):
+        recommendations_raw = []
+
+    recommendations = [
+        str(item).strip()
+        for item in recommendations_raw
+        if str(item).strip()
+    ]
+
+    return {
+        'headline': headline,
+        'summary': summary,
+        'chart_priority': chart_priority[:8],
+        'table_priority': table_priority[:8],
+        'recommendations': recommendations[:8]
     }
 
 def _ensure_lifestyle_tracker_table(db):
@@ -1983,6 +2429,191 @@ def top_products():
     except Exception as e:
         print(f"Top products error: {e}")
         return jsonify({"error": "Failed to load top products"}), 500
+
+@app.route('/api/admin/least-selling-products', methods=['GET'])
+def least_selling_products():
+    if 'admin_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    db = get_db()
+    try:
+        limit_param = request.args.get('limit', 5)
+        try:
+            limit = max(1, min(20, int(limit_param)))
+        except (TypeError, ValueError):
+            limit = 5
+
+        data = _get_least_selling_products_data(db, limit=limit)
+        return jsonify(data)
+    except Exception as e:
+        print(f"Least-selling products error: {e}")
+        return jsonify({'error': 'Failed to load least-selling products'}), 500
+
+@app.route('/api/admin/revenue-trend', methods=['GET'])
+def revenue_trend():
+    if 'admin_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    db = get_db()
+    try:
+        daily_param = request.args.get('daily_points', 14)
+        weekly_param = request.args.get('weekly_points', 12)
+
+        try:
+            daily_points = max(7, min(30, int(daily_param)))
+        except (TypeError, ValueError):
+            daily_points = 14
+
+        try:
+            weekly_points = max(4, min(20, int(weekly_param)))
+        except (TypeError, ValueError):
+            weekly_points = 12
+
+        data = _get_revenue_trend_data(db, daily_points=daily_points, weekly_points=weekly_points)
+        return jsonify(data)
+    except Exception as e:
+        print(f"Revenue trend error: {e}")
+        return jsonify({'error': 'Failed to load revenue trend'}), 500
+
+@app.route('/api/admin/order-status-distribution', methods=['GET'])
+def order_status_distribution():
+    if 'admin_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    db = get_db()
+    try:
+        data = _get_order_status_distribution_data(db)
+        return jsonify(data)
+    except Exception as e:
+        print(f"Order status distribution error: {e}")
+        return jsonify({'error': 'Failed to load order status distribution'}), 500
+
+@app.route('/api/admin/category-performance', methods=['GET'])
+def category_performance():
+    if 'admin_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    db = get_db()
+    try:
+        data = _get_category_performance_data(db)
+        return jsonify(data)
+    except Exception as e:
+        print(f"Category performance error: {e}")
+        return jsonify({'error': 'Failed to load category performance'}), 500
+
+@app.route('/api/admin/business-summary-v2', methods=['GET'])
+def business_summary_v2():
+    if 'admin_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    db = get_db()
+    deterministic_bundle = _get_deterministic_analytics_bundle(db)
+    structured_payload = _build_structured_analytics_payload(deterministic_bundle)
+
+    cache_key = _build_cache_key('business_summary_v2', {
+        'signature': _analytics_signature(db)
+    })
+
+    cached_payload = _cache_get(cache_key)
+    if cached_payload:
+        return jsonify({'source': 'cache', 'analytics': cached_payload})
+
+    is_limited, retry_after = _rate_limit_check('business_summary_v2')
+    if is_limited:
+        return jsonify({
+            'source': 'rate_limited_fallback',
+            'retry_after_seconds': retry_after,
+            'analytics': structured_payload
+        }), 200
+
+    if _is_endpoint_in_cooldown('business_summary_v2'):
+        return jsonify({
+            'source': 'quota_cooldown_fallback',
+            'cooldown_seconds': _cooldown_remaining('business_summary_v2'),
+            'analytics': structured_payload
+        }), 200
+
+    if 'ai_model' not in globals():
+        return jsonify({
+            'source': 'fallback',
+            'analytics': structured_payload
+        }), 200
+
+    try:
+        chart_ids = [
+            chart['id'] for chart in structured_payload.get('chart_specs', [])
+            if isinstance(chart, dict) and chart.get('id')
+        ]
+        table_ids = [
+            table['id'] for table in structured_payload.get('table_blocks', [])
+            if isinstance(table, dict) and table.get('id')
+        ]
+
+        prompt = f"""You are a retail analytics strategist for Sambast.
+
+You must interpret the provided deterministic metrics and prioritize which visual sections should appear first.
+Do NOT invent or alter any numeric values.
+
+AVAILABLE CHART IDS:
+{json.dumps(chart_ids)}
+
+AVAILABLE TABLE IDS:
+{json.dumps(table_ids)}
+
+DETERMINISTIC METRICS SNAPSHOT:
+{json.dumps(deterministic_bundle, ensure_ascii=True)}
+
+Return ONLY strict JSON with this schema:
+{{
+  "headline": "short dashboard headline",
+  "summary": "2-4 sentence strategic interpretation",
+  "chart_priority": ["chart_id"],
+  "table_priority": ["table_id"],
+  "recommendations": ["action text"]
+}}
+
+Rules:
+- Keep recommendations to 3-5 concise items.
+- chart_priority and table_priority must use only provided IDs.
+- No markdown. No code fences. No HTML."""
+
+        response = ai_model.generate_content(prompt)
+        parsed = _normalize_business_summary_v2_interpretation(_safe_json_loads(response.text))
+
+        merged_payload = {
+            'headline': structured_payload.get('headline', 'AI Analytics Overview'),
+            'summary': structured_payload.get('summary', ''),
+            'chart_specs': list(structured_payload.get('chart_specs', [])),
+            'table_blocks': list(structured_payload.get('table_blocks', [])),
+            'recommendations': list(structured_payload.get('recommendations', []))
+        }
+
+        if parsed:
+            if parsed.get('headline'):
+                merged_payload['headline'] = parsed['headline']
+            if parsed.get('summary'):
+                merged_payload['summary'] = parsed['summary']
+            if parsed.get('recommendations'):
+                merged_payload['recommendations'] = parsed['recommendations']
+            merged_payload['chart_specs'] = _apply_priority_order(
+                merged_payload['chart_specs'],
+                parsed.get('chart_priority', [])
+            )
+            merged_payload['table_blocks'] = _apply_priority_order(
+                merged_payload['table_blocks'],
+                parsed.get('table_priority', [])
+            )
+
+        _cache_set(cache_key, merged_payload, AI_CACHE_TTL_SECONDS['business_summary_v2'])
+        return jsonify({'source': 'ai', 'analytics': merged_payload})
+    except Exception as e:
+        if _is_quota_error(e):
+            _set_endpoint_cooldown('business_summary_v2')
+        print(f"Business summary v2 error: {e}")
+        return jsonify({
+            'source': 'fallback',
+            'analytics': structured_payload
+        }), 200
 
 @app.route('/api/admin/inventory-forecast', methods=['GET'])
 def inventory_forecast():
