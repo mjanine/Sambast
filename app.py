@@ -343,6 +343,14 @@ def _run_migrations(db):
             db.commit()
             print("Migration: Added base_price_at_time column to order_items table.")
 
+            # Migration 1e: Ensure products.stock_quantity exists for inventory tracking
+            cursor.execute("PRAGMA table_info(products)")
+            product_columns = [column[1] for column in cursor.fetchall()]
+            if product_columns and 'stock_quantity' not in product_columns:
+                cursor.execute("ALTER TABLE products ADD COLUMN stock_quantity INTEGER DEFAULT 0")
+                db.commit()
+                print("Migration: Added stock_quantity column to products table.")
+
         # Migration 1d: Ensure categories table exists and is backfilled from products
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS categories (
@@ -1546,6 +1554,39 @@ def update_order_status(order_id):
     if 'admin_id' not in session: return redirect(url_for('admin_login_page'))
     new_status = request.form.get('status')
     db = get_db()
+    current_order = db.execute(
+        'SELECT status FROM orders WHERE order_id = ?',
+        (order_id,)
+    ).fetchone()
+    
+    # Implement Fulfillment Model: Deduct inventory only once when order transitions to Completed
+    if new_status == 'Completed' and current_order and current_order['status'] != 'Completed':
+        # Fetch all items in this order
+        order_items = db.execute(
+            'SELECT product_id, quantity FROM order_items WHERE order_id = ?',
+            (order_id,)
+        ).fetchall()
+        
+        # Deduct stock for each product
+        for item in order_items:
+            product_id = item['product_id']
+            quantity = item['quantity']
+            
+            # Update the live stock column used by the rest of the app
+            db.execute(
+                '''UPDATE products
+                   SET stock_status = CASE
+                           WHEN stock_status >= ? THEN stock_status - ?
+                           ELSE 0
+                       END,
+                       stock_quantity = CASE
+                           WHEN stock_quantity >= ? THEN stock_quantity - ?
+                           ELSE 0
+                       END
+                   WHERE product_id = ?''',
+                (quantity, quantity, quantity, quantity, product_id)
+            )
+    
     db.execute('UPDATE orders SET status = ? WHERE order_id = ?', (new_status, order_id))
     action_text = f"Moved Order #{order_id} to {new_status}"
     db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
