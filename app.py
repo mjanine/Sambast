@@ -1013,7 +1013,7 @@ def _normalize_forecast_payload(payload):
         'recommendations': recommendations[:12]
     }
 
-def _apply_priority_order(items, priority_ids):
+def _apply_priority_order(items, priority_ids, id_key='id'):
     if not isinstance(items, list):
         return []
 
@@ -1021,9 +1021,9 @@ def _apply_priority_order(items, priority_ids):
         return items
 
     index_by_id = {
-        str(item.get('id')): item
+        str(item.get(id_key)): item
         for item in items
-        if isinstance(item, dict) and item.get('id')
+        if isinstance(item, dict) and item.get(id_key)
     }
 
     ordered = []
@@ -1039,12 +1039,44 @@ def _apply_priority_order(items, priority_ids):
             seen.add(normalized_id)
 
     for item in items:
-        item_id = str(item.get('id', '')).strip() if isinstance(item, dict) else ''
+        item_id = str(item.get(id_key, '')).strip() if isinstance(item, dict) else ''
         if item_id and item_id in seen:
             continue
         ordered.append(item)
 
     return ordered
+
+def _merge_items_by_key(default_items, incoming_items, key_name):
+    if not isinstance(default_items, list):
+        default_items = []
+    if not isinstance(incoming_items, list) or not incoming_items:
+        return default_items
+
+    merged_by_key = {}
+    default_order = []
+
+    for item in default_items:
+        if not isinstance(item, dict):
+            continue
+        key_value = str(item.get(key_name, '')).strip()
+        if not key_value:
+            continue
+        merged_by_key[key_value] = dict(item)
+        default_order.append(key_value)
+
+    for item in incoming_items:
+        if not isinstance(item, dict):
+            continue
+        key_value = str(item.get(key_name, '')).strip()
+        if not key_value:
+            continue
+        base = dict(merged_by_key.get(key_value, {}))
+        base.update(item)
+        merged_by_key[key_value] = base
+        if key_value not in default_order:
+            default_order.append(key_value)
+
+    return [merged_by_key[key] for key in default_order if key in merged_by_key]
 
 def _analytics_signature(db):
     order_stats = db.execute('''
@@ -1233,34 +1265,47 @@ def _get_deterministic_analytics_bundle(db):
         'category_performance': _get_category_performance_data(db)
     }
 
-def _build_default_analytics_recommendations(bundle):
+def _build_default_priority_recommendations(bundle):
     recommendations = []
 
     least_selling = bundle.get('least_selling_products', [])
     if least_selling and least_selling[0].get('count', 0) == 0:
-        recommendations.append(
-            'Prioritize markdowns or bundle offers for zero-sale products to improve turnover.'
-        )
+        recommendations.append({
+            'text': 'Prioritize markdowns or bundle offers for zero-sale products to improve turnover.',
+            'priority': 'high',
+            'related_ids': ['least_selling_products', 'least_selling_products_table']
+        })
 
     distribution = bundle.get('order_status_distribution', [])
     pending_count = next((item['count'] for item in distribution if item['status'] == 'Pending'), 0)
     completed_count = bundle.get('totals', {}).get('completed_orders', 0)
     if pending_count > completed_count:
-        recommendations.append(
-            'Pending orders currently exceed completed orders; review fulfillment bottlenecks.'
-        )
+        recommendations.append({
+            'text': 'Pending orders currently exceed completed orders; review fulfillment bottlenecks.',
+            'priority': 'high',
+            'related_ids': ['order_status_distribution']
+        })
 
     category_perf = bundle.get('category_performance', [])
     if category_perf:
         top_category = category_perf[0]
-        recommendations.append(
-            f"Protect momentum in {top_category['category']} by ensuring replenishment and upsell visibility."
-        )
+        recommendations.append({
+            'text': f"Protect momentum in {top_category['category']} by ensuring replenishment and upsell visibility.",
+            'priority': 'medium',
+            'related_ids': ['category_revenue_performance', 'category_performance_table']
+        })
 
     if not recommendations:
-        recommendations.append('Maintain current sales and fulfillment cadence while monitoring weekly revenue movement.')
+        recommendations.append({
+            'text': 'Maintain current sales and fulfillment cadence while monitoring weekly revenue movement.',
+            'priority': 'low',
+            'related_ids': ['daily_revenue_trend', 'weekly_revenue_trend']
+        })
 
     return recommendations[:4]
+
+def _build_default_analytics_recommendations(bundle):
+    return [entry['text'] for entry in _build_default_priority_recommendations(bundle)]
 
 def _build_structured_analytics_payload(bundle):
     totals = bundle.get('totals', {})
@@ -1398,17 +1443,113 @@ def _build_structured_analytics_payload(bundle):
         f"{int(totals.get('active_orders', 0))} active order(s) in the pipeline."
     )
 
+    daily_revenues = [float(entry.get('revenue', 0) or 0) for entry in daily_chart]
+    if len(daily_revenues) >= 2:
+        delta = daily_revenues[-1] - daily_revenues[0]
+        if delta > 0:
+            daily_trend_text = f"Daily revenue trend is improving, ending ₱{delta:,.2f} above the period start."
+        elif delta < 0:
+            daily_trend_text = f"Daily revenue softened over the period, finishing ₱{abs(delta):,.2f} below the start."
+        else:
+            daily_trend_text = "Daily revenue remained flat from the first to the last day in the period."
+    else:
+        daily_trend_text = "Insufficient daily points for directional trend analysis."
+
+    weekly_revenues = [float(entry.get('revenue', 0) or 0) for entry in weekly_chart]
+    if weekly_revenues:
+        peak_week_revenue = max(weekly_revenues)
+        peak_week_index = weekly_revenues.index(peak_week_revenue)
+        peak_week_label = str(weekly_chart[peak_week_index].get('period'))
+        weekly_trend_text = f"Peak weekly revenue was ₱{peak_week_revenue:,.2f} in {peak_week_label}."
+    else:
+        weekly_trend_text = "No weekly completed-order revenue data is available yet."
+
+    if status_chart:
+        dominant_status = max(status_chart, key=lambda item: int(item.get('count', 0) or 0))
+        status_text = (
+            f"{dominant_status.get('status', 'Unknown')} is the largest order state "
+            f"with {int(dominant_status.get('count', 0) or 0)} order(s)."
+        )
+    else:
+        status_text = "No order status distribution data is available yet."
+
+    if category_chart:
+        top_category = category_chart[0]
+        category_text = (
+            f"{top_category.get('category', 'Uncategorized')} currently leads category revenue at "
+            f"₱{float(top_category.get('revenue', 0) or 0):,.2f}."
+        )
+    else:
+        category_text = "No category-level sales data is available yet."
+
+    zero_sale_count = len([item for item in least_chart if int(item.get('count', 0) or 0) == 0])
+    least_text = (
+        f"{zero_sale_count} least-selling item(s) have zero completed sales in the current window."
+        if least_chart else
+        "No least-selling product data is available yet."
+    )
+
+    chart_insights = [
+        {
+            'chart_id': 'daily_revenue_trend',
+            'insight': daily_trend_text,
+            'action': 'Review recent campaigns and stock availability for days with the weakest revenue.'
+        },
+        {
+            'chart_id': 'weekly_revenue_trend',
+            'insight': weekly_trend_text,
+            'action': 'Replicate the strongest week plan and align promotions with high-performing weeks.'
+        },
+        {
+            'chart_id': 'order_status_distribution',
+            'insight': status_text,
+            'action': 'Rebalance operational capacity if non-completed statuses keep dominating the mix.'
+        },
+        {
+            'chart_id': 'category_revenue_performance',
+            'insight': category_text,
+            'action': 'Protect top categories while creating lift plans for low-contribution categories.'
+        },
+        {
+            'chart_id': 'least_selling_products',
+            'insight': least_text,
+            'action': 'Bundle or discount chronic low-sellers and monitor conversion in the next cycle.'
+        }
+    ]
+
+    table_insights = [
+        {
+            'table_id': 'least_selling_products_table',
+            'insight': 'Use this table to isolate products with low units sold and low revenue contribution.',
+            'action': 'Prioritize corrective pricing, placement, or bundling for the bottom rows.'
+        },
+        {
+            'table_id': 'category_performance_table',
+            'insight': 'This table compares category revenue against units sold and SKU breadth.',
+            'action': 'Adjust inventory depth and promotional focus based on category conversion efficiency.'
+        }
+    ]
+
+    priority_recommendations = _build_default_priority_recommendations(bundle)
+
     return {
         'headline': 'AI Analytics Overview',
         'summary': summary,
         'chart_specs': chart_specs,
         'table_blocks': table_blocks,
-        'recommendations': _build_default_analytics_recommendations(bundle)
+        'chart_insights': chart_insights,
+        'table_insights': table_insights,
+        'priority_recommendations': priority_recommendations,
+        'recommendations': [entry['text'] for entry in priority_recommendations]
     }
 
-def _normalize_business_summary_v2_interpretation(payload):
+def _normalize_business_summary_v2_interpretation(payload, valid_chart_ids=None, valid_table_ids=None):
     if not isinstance(payload, dict):
         return None
+
+    valid_chart_ids = set(valid_chart_ids or [])
+    valid_table_ids = set(valid_table_ids or [])
+    valid_related_ids = valid_chart_ids | valid_table_ids
 
     headline = str(payload.get('headline', '')).strip()
     summary = str(payload.get('summary', '')).strip()
@@ -1424,6 +1565,8 @@ def _normalize_business_summary_v2_interpretation(payload):
             continue
         if not re.match(r'^[a-zA-Z0-9_-]+$', entry_text):
             continue
+        if valid_chart_ids and entry_text not in valid_chart_ids:
+            continue
         chart_priority.append(entry_text)
 
     table_priority_raw = payload.get('table_priority', [])
@@ -1437,7 +1580,101 @@ def _normalize_business_summary_v2_interpretation(payload):
             continue
         if not re.match(r'^[a-zA-Z0-9_-]+$', entry_text):
             continue
+        if valid_table_ids and entry_text not in valid_table_ids:
+            continue
         table_priority.append(entry_text)
+
+    chart_insights_raw = payload.get('chart_insights', [])
+    if not isinstance(chart_insights_raw, list):
+        chart_insights_raw = []
+
+    chart_insights = []
+    for entry in chart_insights_raw:
+        if not isinstance(entry, dict):
+            continue
+
+        chart_id = str(entry.get('chart_id', '')).strip()
+        if not chart_id:
+            continue
+        if valid_chart_ids and chart_id not in valid_chart_ids:
+            continue
+
+        insight = str(entry.get('insight', '')).strip() or str(entry.get('interpretation', '')).strip()
+        if not insight:
+            continue
+
+        action = str(entry.get('action', '')).strip()
+        normalized_item = {
+            'chart_id': chart_id,
+            'insight': insight
+        }
+        if action:
+            normalized_item['action'] = action
+        chart_insights.append(normalized_item)
+
+    table_insights_raw = payload.get('table_insights', [])
+    if not isinstance(table_insights_raw, list):
+        table_insights_raw = []
+
+    table_insights = []
+    for entry in table_insights_raw:
+        if not isinstance(entry, dict):
+            continue
+
+        table_id = str(entry.get('table_id', '')).strip()
+        if not table_id:
+            continue
+        if valid_table_ids and table_id not in valid_table_ids:
+            continue
+
+        insight = str(entry.get('insight', '')).strip() or str(entry.get('interpretation', '')).strip()
+        if not insight:
+            continue
+
+        action = str(entry.get('action', '')).strip()
+        normalized_item = {
+            'table_id': table_id,
+            'insight': insight
+        }
+        if action:
+            normalized_item['action'] = action
+        table_insights.append(normalized_item)
+
+    priority_recommendations_raw = payload.get('priority_recommendations', [])
+    if not isinstance(priority_recommendations_raw, list):
+        priority_recommendations_raw = []
+
+    priority_recommendations = []
+    for entry in priority_recommendations_raw:
+        if not isinstance(entry, dict):
+            continue
+
+        text = str(entry.get('text', '')).strip()
+        if not text:
+            continue
+
+        priority = str(entry.get('priority', 'medium')).strip().lower()
+        if priority not in ['high', 'medium', 'low']:
+            priority = 'medium'
+
+        related_ids_raw = entry.get('related_ids', [])
+        if not isinstance(related_ids_raw, list):
+            related_ids_raw = []
+
+        related_ids = []
+        for related_id in related_ids_raw:
+            normalized_related_id = str(related_id or '').strip()
+            if not normalized_related_id:
+                continue
+            if valid_related_ids and normalized_related_id not in valid_related_ids:
+                continue
+            related_ids.append(normalized_related_id)
+
+        priority_recommendations.append({
+            'text': text,
+            'priority': priority,
+            'related_ids': related_ids[:8]
+        })
 
     recommendations_raw = payload.get('recommendations', [])
     if not isinstance(recommendations_raw, list):
@@ -1454,6 +1691,9 @@ def _normalize_business_summary_v2_interpretation(payload):
         'summary': summary,
         'chart_priority': chart_priority[:8],
         'table_priority': table_priority[:8],
+        'chart_insights': chart_insights[:20],
+        'table_insights': table_insights[:20],
+        'priority_recommendations': priority_recommendations[:12],
         'recommendations': recommendations[:8]
     }
 
@@ -2551,7 +2791,7 @@ def business_summary_v2():
 
         prompt = f"""You are a retail analytics strategist for Sambast.
 
-You must interpret the provided deterministic metrics and prioritize which visual sections should appear first.
+You must interpret the provided deterministic metrics, produce per-visual insights, and prioritize sections.
 Do NOT invent or alter any numeric values.
 
 AVAILABLE CHART IDS:
@@ -2569,22 +2809,41 @@ Return ONLY strict JSON with this schema:
   "summary": "2-4 sentence strategic interpretation",
   "chart_priority": ["chart_id"],
   "table_priority": ["table_id"],
+    "chart_insights": [
+        {{"chart_id": "chart_id", "insight": "specific interpretation", "action": "recommended action"}}
+    ],
+    "table_insights": [
+        {{"table_id": "table_id", "insight": "specific interpretation", "action": "recommended action"}}
+    ],
+    "priority_recommendations": [
+        {{"text": "action text", "priority": "high|medium|low", "related_ids": ["chart_or_table_id"]}}
+    ],
   "recommendations": ["action text"]
 }}
 
 Rules:
-- Keep recommendations to 3-5 concise items.
+- Keep recommendations to 3-6 concise items.
 - chart_priority and table_priority must use only provided IDs.
+- Provide at least 1 chart_insight for each chart id listed above.
+- Provide at least 1 table_insight for each table id listed above.
+- related_ids may reference chart ids or table ids only.
 - No markdown. No code fences. No HTML."""
 
         response = ai_model.generate_content(prompt)
-        parsed = _normalize_business_summary_v2_interpretation(_safe_json_loads(response.text))
+        parsed = _normalize_business_summary_v2_interpretation(
+            _safe_json_loads(response.text),
+            valid_chart_ids=chart_ids,
+            valid_table_ids=table_ids
+        )
 
         merged_payload = {
             'headline': structured_payload.get('headline', 'AI Analytics Overview'),
             'summary': structured_payload.get('summary', ''),
             'chart_specs': list(structured_payload.get('chart_specs', [])),
             'table_blocks': list(structured_payload.get('table_blocks', [])),
+            'chart_insights': list(structured_payload.get('chart_insights', [])),
+            'table_insights': list(structured_payload.get('table_insights', [])),
+            'priority_recommendations': list(structured_payload.get('priority_recommendations', [])),
             'recommendations': list(structured_payload.get('recommendations', []))
         }
 
@@ -2593,8 +2852,6 @@ Rules:
                 merged_payload['headline'] = parsed['headline']
             if parsed.get('summary'):
                 merged_payload['summary'] = parsed['summary']
-            if parsed.get('recommendations'):
-                merged_payload['recommendations'] = parsed['recommendations']
             merged_payload['chart_specs'] = _apply_priority_order(
                 merged_payload['chart_specs'],
                 parsed.get('chart_priority', [])
@@ -2603,6 +2860,38 @@ Rules:
                 merged_payload['table_blocks'],
                 parsed.get('table_priority', [])
             )
+            if parsed.get('chart_insights'):
+                merged_payload['chart_insights'] = _merge_items_by_key(
+                    merged_payload['chart_insights'],
+                    parsed.get('chart_insights', []),
+                    'chart_id'
+                )
+                merged_payload['chart_insights'] = _apply_priority_order(
+                    merged_payload['chart_insights'],
+                    parsed.get('chart_priority', []),
+                    id_key='chart_id'
+                )
+            if parsed.get('table_insights'):
+                merged_payload['table_insights'] = _merge_items_by_key(
+                    merged_payload['table_insights'],
+                    parsed.get('table_insights', []),
+                    'table_id'
+                )
+                merged_payload['table_insights'] = _apply_priority_order(
+                    merged_payload['table_insights'],
+                    parsed.get('table_priority', []),
+                    id_key='table_id'
+                )
+            if parsed.get('priority_recommendations'):
+                merged_payload['priority_recommendations'] = parsed['priority_recommendations']
+            if parsed.get('recommendations'):
+                merged_payload['recommendations'] = parsed['recommendations']
+            elif parsed.get('priority_recommendations'):
+                merged_payload['recommendations'] = [
+                    entry.get('text', '')
+                    for entry in parsed['priority_recommendations']
+                    if str(entry.get('text', '')).strip()
+                ]
 
         _cache_set(cache_key, merged_payload, AI_CACHE_TTL_SECONDS['business_summary_v2'])
         return jsonify({'source': 'ai', 'analytics': merged_payload})
