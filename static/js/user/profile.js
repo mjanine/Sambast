@@ -100,8 +100,8 @@ function hideNotification() {
 
     if (editBtn) {
         editBtn.addEventListener('click', () => {
-            // Redirects to verifycode.html when pencil is clicked
-            window.location.href = 'verifycode.html';
+            // Route through Flask endpoint instead of a file path URL
+            window.location.href = '/verify-code';
         });
     }
 

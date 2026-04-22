@@ -3061,6 +3061,22 @@ def profile_page():
     user = db.execute('SELECT name, contact_no FROM users WHERE user_id = ?', (session['user_id'],)).fetchone()
     return render_template('user/profile.html', user=user)
 
+
+@app.route('/verify-code')
+def verify_code_page():
+    if 'user_id' not in session:
+        return redirect(url_for('sign_in_page'))
+
+    db = get_db()
+    user = db.execute('SELECT contact_no FROM users WHERE user_id = ?', (session['user_id'],)).fetchone()
+
+    contact_no = user['contact_no'] if user and user['contact_no'] else ''
+    masked_contact = contact_no
+    if len(contact_no) >= 4:
+        masked_contact = f"{'*' * (len(contact_no) - 4)}{contact_no[-4:]}"
+
+    return render_template('user/verifycode.html', contact_no=masked_contact)
+
 @app.route('/cart')
 def cart_page():
     if 'user_id' not in session:
