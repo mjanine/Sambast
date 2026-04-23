@@ -58,6 +58,16 @@
             <button class="add-btn" id="addProductBtn">+ Add Product</button>
         </div>
 
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="inventory-flash-list">
+                    {% for message in messages %}
+                        <div class="inventory-flash-item">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
         <div class="ai-sections">
             <div id="ai-inventory-alert" class="ai-card">
                 <div class="ai-card-header">
@@ -116,6 +126,7 @@
                  data-pcat="{{ product['category'] }}"
                  data-desc="{{ product['description'] }}"
                  data-stock="{{ product['stock_status'] }}"
+                  data-archived="{{ product['is_archived'] if 'is_archived' in product.keys() else 0 }}"
                   data-unit="{{ product['unit'] or 'pcs' }}"
                  data-image="{{ product['image_filename'] or '' }}">
                 <div class="card-header">
@@ -167,6 +178,8 @@
                 </div>
 
                 <div class="card-body">
+                    {% set stock_value = (product['stock_status'] or 0)|int %}
+                    {% set archived_value = (product['is_archived'] if 'is_archived' in product.keys() else 0)|int %}
                     {% if product['image_filename'] %}
                         <img src="{{ url_for('product_image', filename=product['image_filename']) }}" alt="Product" class="prod-img-small">
                     {% else %}
@@ -174,8 +187,8 @@
                     {% endif %}
                     <div><strong>CATEGORY:</strong> {{ product['category'] }}</div>
                     <div><strong>PRICE:</strong> ₱{{ product['price'] }}</div>
-                    <div><strong>STOCK:</strong> {{ product['stock_status'] or 0 }} {{ product['unit'] or 'pcs' }}{{ ' (Out of Stock)' if (product['stock_status'] or 0)|int == 0 else '' }}</div>
-                    <div><strong>STATUS:</strong> {{ 'Out of Stock' if (product['stock_status'] or 0)|int == 0 else 'In Stock' }}</div>
+                    <div><strong>STOCK:</strong> {{ stock_value }} {{ product['unit'] or 'pcs' }}{{ ' (Out of Stock)' if stock_value == 0 else '' }}</div>
+                    <div><strong>STATUS:</strong> {% if archived_value == 1 %}<span class="inventory-status-archived">Archived</span>{% else %}{{ 'Out of Stock' if stock_value == 0 else 'In Stock' }}{% endif %}</div>
                 </div>
             </div>
             {% endfor %}

@@ -66,6 +66,51 @@ function destroyAiCharts() {
     }
 }
 
+function normalizeVisualInsight(rawInsight, idKey) {
+    if (!rawInsight || typeof rawInsight !== "object") return null;
+
+    const id = String(rawInsight[idKey] || "").trim();
+    const insight = String(rawInsight.insight || rawInsight.interpretation || "").trim();
+    const action = String(rawInsight.action || "").trim();
+
+    if (!id || !insight) return null;
+    return { id, insight, action };
+}
+
+function buildVisualInsightMap(rawInsights, idKey) {
+    const insights = Array.isArray(rawInsights) ? rawInsights : [];
+    const insightMap = new Map();
+
+    insights.forEach(raw => {
+        const normalized = normalizeVisualInsight(raw, idKey);
+        if (!normalized) return;
+        insightMap.set(normalized.id, normalized);
+    });
+
+    return insightMap;
+}
+
+function renderVisualInsight(insight, parentContainer) {
+    if (!parentContainer || !insight) return;
+
+    const insightBox = document.createElement("div");
+    insightBox.className = "ai-visual-insight";
+
+    const insightText = document.createElement("p");
+    insightText.className = "ai-visual-insight-text";
+    insightText.textContent = insight.insight;
+    insightBox.appendChild(insightText);
+
+    if (insight.action) {
+        const actionText = document.createElement("p");
+        actionText.className = "ai-visual-action-text";
+        actionText.textContent = `Action: ${insight.action}`;
+        insightBox.appendChild(actionText);
+    }
+
+    parentContainer.appendChild(insightBox);
+}
+
 function normalizeChartSpec(rawSpec) {
     if (!rawSpec || typeof rawSpec !== "object") return null;
 
@@ -103,7 +148,7 @@ function normalizeChartSpec(rawSpec) {
     };
 }
 
-function renderChartSection(spec, parentContainer) {
+function renderChartSection(spec, parentContainer, insightMap = null) {
     if (!parentContainer) return;
 
     const normalized = normalizeChartSpec(spec);
@@ -176,6 +221,11 @@ function renderChartSection(spec, parentContainer) {
 
     const chartInstance = new Chart(canvas, chartConfig);
     aiChartInstances.push(chartInstance);
+
+    const visualInsight = insightMap instanceof Map
+        ? insightMap.get(normalized.id)
+        : null;
+    renderVisualInsight(visualInsight, chartCard);
 }
 
 function normalizeTableBlock(rawBlock) {
@@ -196,7 +246,7 @@ function normalizeTableBlock(rawBlock) {
     return { id, title, columns, rows };
 }
 
-function renderTableBlock(block, parentContainer) {
+function renderTableBlock(block, parentContainer, insightMap = null) {
     if (!parentContainer) return;
 
     const normalized = normalizeTableBlock(block);
@@ -215,6 +265,10 @@ function renderTableBlock(block, parentContainer) {
         emptyMessage.className = "ai-empty-text";
         emptyMessage.textContent = "No data available for this section.";
         tableCard.appendChild(emptyMessage);
+        const visualInsight = insightMap instanceof Map
+            ? insightMap.get(normalized.id)
+            : null;
+        renderVisualInsight(visualInsight, tableCard);
         parentContainer.appendChild(tableCard);
         return;
     }
@@ -248,7 +302,102 @@ function renderTableBlock(block, parentContainer) {
     table.appendChild(tbody);
     tableWrapper.appendChild(table);
     tableCard.appendChild(tableWrapper);
+
+    const visualInsight = insightMap instanceof Map
+        ? insightMap.get(normalized.id)
+        : null;
+    renderVisualInsight(visualInsight, tableCard);
+
     parentContainer.appendChild(tableCard);
+}
+
+function normalizePriorityRecommendation(rawRecommendation) {
+    if (!rawRecommendation || typeof rawRecommendation !== "object") return null;
+
+    const text = String(rawRecommendation.text || "").trim();
+    if (!text) return null;
+
+    const normalizedPriority = String(rawRecommendation.priority || "medium")
+        .trim()
+        .toLowerCase();
+    const priority = ["high", "medium", "low"].includes(normalizedPriority)
+        ? normalizedPriority
+        : "medium";
+
+    const relatedIds = Array.isArray(rawRecommendation.related_ids)
+        ? rawRecommendation.related_ids
+            .map(id => String(id || "").trim())
+            .filter(Boolean)
+        : [];
+
+    return { text, priority, relatedIds };
+}
+
+function renderPriorityRecommendations(recommendations, parentContainer, labelLookup = null) {
+    if (!parentContainer) return [];
+
+    const normalized = Array.isArray(recommendations)
+        ? recommendations
+            .map(entry => normalizePriorityRecommendation(entry))
+            .filter(Boolean)
+        : [];
+
+    if (normalized.length === 0) return [];
+
+    const recoCard = document.createElement("div");
+    recoCard.className = "card ai-priority-recommendations-card";
+
+    const title = document.createElement("div");
+    title.className = "small-title";
+    title.textContent = "Priority Recommendations";
+    recoCard.appendChild(title);
+
+    const list = document.createElement("ul");
+    list.className = "ai-priority-list";
+
+    normalized.forEach(entry => {
+        const item = document.createElement("li");
+        item.className = "ai-priority-item";
+
+        const topRow = document.createElement("div");
+        topRow.className = "ai-priority-item-top";
+
+        const badge = document.createElement("span");
+        badge.className = `ai-priority-badge ai-priority-${entry.priority}`;
+        badge.textContent = entry.priority;
+        topRow.appendChild(badge);
+
+        const text = document.createElement("p");
+        text.className = "ai-priority-text";
+        text.textContent = entry.text;
+        topRow.appendChild(text);
+
+        item.appendChild(topRow);
+
+        if (entry.relatedIds.length > 0) {
+            const relatedWrap = document.createElement("div");
+            relatedWrap.className = "ai-related-tags";
+
+            entry.relatedIds.forEach(relatedId => {
+                const chip = document.createElement("span");
+                chip.className = "ai-related-chip";
+                const label = labelLookup instanceof Map
+                    ? labelLookup.get(relatedId)
+                    : null;
+                chip.textContent = label || relatedId;
+                relatedWrap.appendChild(chip);
+            });
+
+            item.appendChild(relatedWrap);
+        }
+
+        list.appendChild(item);
+    });
+
+    recoCard.appendChild(list);
+    parentContainer.appendChild(recoCard);
+
+    return normalized.map(item => item.text.toLowerCase());
 }
 
 function renderRecommendations(recommendations, parentContainer) {
@@ -313,23 +462,56 @@ function renderAiInsightsBlock(analyticsPayload, source) {
     summary.textContent = analyticsPayload.summary || "No interpretation available.";
     block.appendChild(summary);
 
+    const chartInsightMap = buildVisualInsightMap(analyticsPayload.chart_insights, "chart_id");
+    const tableInsightMap = buildVisualInsightMap(analyticsPayload.table_insights, "table_id");
+
+    const chartTitleLookup = new Map();
+    const chartSpecs = Array.isArray(analyticsPayload.chart_specs) ? analyticsPayload.chart_specs : [];
+    chartSpecs.forEach(spec => {
+        const id = String(spec && spec.id ? spec.id : "").trim();
+        const title = String(spec && spec.title ? spec.title : "").trim();
+        if (id && title) chartTitleLookup.set(id, title);
+    });
+
+    const tableTitleLookup = new Map();
+    const tableBlocks = Array.isArray(analyticsPayload.table_blocks) ? analyticsPayload.table_blocks : [];
+    tableBlocks.forEach(table => {
+        const id = String(table && table.id ? table.id : "").trim();
+        const title = String(table && table.title ? table.title : "").trim();
+        if (id && title) tableTitleLookup.set(id, title);
+    });
+
+    const relatedLookup = new Map([...chartTitleLookup, ...tableTitleLookup]);
+
     const chartGrid = document.createElement("div");
     chartGrid.className = "ai-chart-grid";
-    const chartSpecs = Array.isArray(analyticsPayload.chart_specs) ? analyticsPayload.chart_specs : [];
-    chartSpecs.forEach(spec => renderChartSection(spec, chartGrid));
+    chartSpecs.forEach(spec => renderChartSection(spec, chartGrid, chartInsightMap));
     if (chartGrid.children.length > 0) {
         block.appendChild(chartGrid);
     }
 
     const tableGrid = document.createElement("div");
     tableGrid.className = "ai-table-grid";
-    const tableBlocks = Array.isArray(analyticsPayload.table_blocks) ? analyticsPayload.table_blocks : [];
-    tableBlocks.forEach(table => renderTableBlock(table, tableGrid));
+    tableBlocks.forEach(table => renderTableBlock(table, tableGrid, tableInsightMap));
     if (tableGrid.children.length > 0) {
         block.appendChild(tableGrid);
     }
 
-    renderRecommendations(analyticsPayload.recommendations || [], block);
+    const priorityTextSet = new Set(renderPriorityRecommendations(
+        analyticsPayload.priority_recommendations,
+        block,
+        relatedLookup
+    ));
+
+    const recommendations = Array.isArray(analyticsPayload.recommendations)
+        ? analyticsPayload.recommendations
+            .map(item => String(item || "").trim())
+            .filter(Boolean)
+        : [];
+
+    const additionalRecommendations = recommendations.filter(item => !priorityTextSet.has(item.toLowerCase()));
+
+    renderRecommendations(additionalRecommendations, block);
 
     aiInsightsContainer.appendChild(block);
 }

@@ -162,6 +162,23 @@ body {
     letter-spacing: 0.5px;
 }
 
+.inventory-flash-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.inventory-flash-item {
+    background: #f9f8f6;
+    border-left: 4px solid #a6171c;
+    color: #1A323E;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
 .inventory-header{
     display:flex;
     justify-content:space-between;
@@ -473,6 +490,11 @@ body {
     border-radius:12px;
     padding:15px;
     margin-bottom:15px;
+}
+
+.inventory-status-archived {
+    color: #7b1f24;
+    font-weight: 700;
 }
 
 .card-header{

@@ -165,6 +165,14 @@ def get_table_columns(conn, table_name):
 	return {row[1] for row in rows}
 
 
+def table_exists(conn, table_name):
+	row = conn.execute(
+		"SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+		(table_name,),
+	).fetchone()
+	return row is not None
+
+
 def seed_products(db_path, csv_path, replace_existing=True, truncate=False, dry_run=False):
 	if not csv_path.exists():
 		raise FileNotFoundError(f"CSV file not found: {csv_path}")
@@ -177,6 +185,15 @@ def seed_products(db_path, csv_path, replace_existing=True, truncate=False, dry_
 		available_columns = get_table_columns(conn, "products")
 
 		if truncate:
+			if table_exists(conn, "order_items"):
+				dependent_count = conn.execute(
+					"SELECT COUNT(*) FROM order_items WHERE product_id IN (SELECT product_id FROM products)"
+				).fetchone()[0]
+				if dependent_count:
+					conn.execute(
+						"DELETE FROM order_items WHERE product_id IN (SELECT product_id FROM products)"
+					)
+					print(f"Truncate mode: removed {dependent_count} dependent order_items row(s).")
 			conn.execute("DELETE FROM products")
 
 		inserted = 0

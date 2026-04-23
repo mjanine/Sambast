@@ -328,6 +328,14 @@ def _run_migrations(db):
             cursor.execute("ALTER TABLE products ADD COLUMN unit TEXT DEFAULT 'pcs'")
             db.commit()
             print("Migration: Added unit column to products table.")
+        if product_columns and 'is_archived' not in product_columns:
+            cursor.execute("ALTER TABLE products ADD COLUMN is_archived INTEGER DEFAULT 0")
+            db.commit()
+            print("Migration: Added is_archived column to products table.")
+        if product_columns and 'archived_at' not in product_columns:
+            cursor.execute("ALTER TABLE products ADD COLUMN archived_at TIMESTAMP")
+            db.commit()
+            print("Migration: Added archived_at column to products table.")
 
         # Migration 1c: Ensure order_items unit transaction columns exist
         cursor.execute("PRAGMA table_info(order_items)")
@@ -429,7 +437,9 @@ def init_db():
             price REAL NOT NULL, 
             stock_status INTEGER DEFAULT 1, 
             image_filename TEXT, 
-            description TEXT)''')
+            description TEXT,
+            is_archived INTEGER DEFAULT 0,
+            archived_at TIMESTAMP)''')
 
         cursor.execute('''CREATE TABLE IF NOT EXISTS categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -554,7 +564,12 @@ def get_inventory_context():
     """Fetches all active products to feed to the AI Chatbot."""
     db = get_db()
     try:
-        products = db.execute('SELECT name, category, price, description FROM products WHERE stock_status > 0').fetchall()
+        products = db.execute('''
+            SELECT name, category, price, description
+            FROM products
+            WHERE stock_status > 0
+              AND IFNULL(is_archived, 0) = 0
+        ''').fetchall()
         if not products:
             return "No products currently available."
         
@@ -619,7 +634,8 @@ def _build_inventory_insights_fallback(db):
     low_stock_rows = db.execute('''
         SELECT name, stock_status
         FROM products
-        WHERE stock_status < 10
+                WHERE stock_status < 10
+                    AND IFNULL(is_archived, 0) = 0
         ORDER BY stock_status ASC, name ASC
         LIMIT 6
     ''').fetchall()
@@ -712,6 +728,7 @@ def _build_inventory_forecast_fallback(db):
         FROM products p
         LEFT JOIN order_items oi ON p.product_id = oi.product_id
         LEFT JOIN orders o ON oi.order_id = o.order_id
+        WHERE IFNULL(p.is_archived, 0) = 0
         GROUP BY p.product_id, p.name, p.stock_status
         ORDER BY p.name ASC
     ''').fetchall()
@@ -822,7 +839,7 @@ def _get_business_summary_snapshot(db):
     ]
 
     low_stock_rows = db.execute(
-        "SELECT name, stock_status AS stock FROM products WHERE stock_status <= ? ORDER BY stock_status ASC, name ASC",
+        "SELECT name, stock_status AS stock FROM products WHERE stock_status <= ? AND IFNULL(is_archived, 0) = 0 ORDER BY stock_status ASC, name ASC",
         (LOW_STOCK_WATCH_MAX,)
     ).fetchall()
     low_stock = [
@@ -1867,6 +1884,7 @@ def _fallback_recommendations(db, cart_items, limit=2, exclude_ids=None):
                 FROM products p
                 LEFT JOIN order_items oi ON p.product_id = oi.product_id
                 WHERE p.stock_status > 0
+                                    AND IFNULL(p.is_archived, 0) = 0
                   AND p.category IN ({placeholders})
                 GROUP BY
                     p.product_id,
@@ -1896,6 +1914,7 @@ def _fallback_recommendations(db, cart_items, limit=2, exclude_ids=None):
             FROM products p
             LEFT JOIN order_items oi ON p.product_id = oi.product_id
             WHERE p.stock_status > 0
+                            AND IFNULL(p.is_archived, 0) = 0
             GROUP BY
                 p.product_id,
                 p.name,
@@ -1979,6 +1998,7 @@ def _build_budget_bundle(db, budget_amount, user_message):
                 FROM products p
                 LEFT JOIN order_items oi ON p.product_id = oi.product_id
                 WHERE p.stock_status > 0
+                                    AND IFNULL(p.is_archived, 0) = 0
                   AND p.category IN ({placeholders})
                 GROUP BY p.product_id, p.name, p.price
                 ORDER BY sold_qty DESC, p.price ASC, p.name ASC
@@ -1997,6 +2017,7 @@ def _build_budget_bundle(db, budget_amount, user_message):
             FROM products p
             LEFT JOIN order_items oi ON p.product_id = oi.product_id
             WHERE p.stock_status > 0
+                            AND IFNULL(p.is_archived, 0) = 0
             GROUP BY p.product_id, p.name, p.price
             ORDER BY sold_qty DESC, p.price ASC, p.name ASC
         ''').fetchall()
@@ -2297,7 +2318,7 @@ def cancel_order(order_id):
 def admin_inventory():
     if 'admin_id' not in session: return redirect(url_for('admin_login_page'))
     db = get_db()
-    products = db.execute('SELECT * FROM products ORDER BY name ASC').fetchall()
+    products = db.execute('SELECT * FROM products ORDER BY IFNULL(is_archived, 0) ASC, name ASC').fetchall()
     categories = db.execute('SELECT id, name FROM categories ORDER BY name ASC').fetchall()
     return render_template('admin/inventory.html', products=products, categories=categories)
 
@@ -2406,11 +2427,69 @@ def edit_product(product_id):
 def delete_product(product_id):
     if 'admin_id' not in session: return redirect(url_for('admin_login_page'))
     db = get_db()
-    db.execute('DELETE FROM products WHERE product_id = ?', (product_id,))
-    action_text = f"Deleted product ID: {product_id}"
-    db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
-               (session['admin_id'], action_text, get_log_category(action_text)))
-    db.commit()
+
+    product_row = db.execute(
+        'SELECT product_id, name, IFNULL(is_archived, 0) AS is_archived FROM products WHERE product_id = ?',
+        (product_id,)
+    ).fetchone()
+
+    if not product_row:
+        flash('Product not found.')
+        return redirect(url_for('admin_inventory'))
+
+    reference_row = db.execute(
+        'SELECT COUNT(*) AS reference_count FROM order_items WHERE product_id = ?',
+        (product_id,)
+    ).fetchone()
+    reference_count = int(reference_row['reference_count'] or 0) if reference_row else 0
+
+    if reference_count > 0:
+        if int(product_row['is_archived'] or 0) == 0:
+            db.execute(
+                '''UPDATE products
+                   SET is_archived = 1,
+                       archived_at = CURRENT_TIMESTAMP,
+                       stock_status = 0
+                   WHERE product_id = ?''',
+                (product_id,)
+            )
+            action_text = (
+                f"Archived product ID: {product_id} (FK protected, referenced by {reference_count} order item(s))"
+            )
+            db.execute(
+                'INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)',
+                (session['admin_id'], action_text, get_log_category(action_text))
+            )
+            db.commit()
+            flash('Product has order history and was archived instead of deleted.')
+        else:
+            flash('Product is already archived and linked to existing order history.')
+        return redirect(url_for('admin_inventory'))
+
+    try:
+        db.execute('DELETE FROM products WHERE product_id = ?', (product_id,))
+        action_text = f"Deleted product ID: {product_id}"
+        db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
+                   (session['admin_id'], action_text, get_log_category(action_text)))
+        db.commit()
+        flash('Product deleted successfully.')
+    except sqlite3.IntegrityError:
+        db.execute(
+            '''UPDATE products
+               SET is_archived = 1,
+                   archived_at = CURRENT_TIMESTAMP,
+                   stock_status = 0
+               WHERE product_id = ?''',
+            (product_id,)
+        )
+        action_text = f"Archived product ID: {product_id} (fallback after FK protection)"
+        db.execute(
+            'INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)',
+            (session['admin_id'], action_text, get_log_category(action_text))
+        )
+        db.commit()
+        flash('Product could not be hard-deleted due to order history and was archived.')
+
     return redirect(url_for('admin_inventory'))
 
 @app.route('/api/admin/inventory-insights', methods=['GET'])
@@ -2952,6 +3031,7 @@ def inventory_forecast():
             FROM products p
             LEFT JOIN order_items oi ON p.product_id = oi.product_id
             LEFT JOIN orders o ON oi.order_id = o.order_id
+            WHERE IFNULL(p.is_archived, 0) = 0
             GROUP BY p.product_id
         """
         items = db.execute(query).fetchall()
@@ -3479,7 +3559,7 @@ def get_products():
     category = request.args.get('category', '').strip()
     search   = request.args.get('search', '').strip()
 
-    query  = 'SELECT * FROM products WHERE stock_status > 0'
+    query  = 'SELECT * FROM products WHERE stock_status > 0 AND IFNULL(is_archived, 0) = 0'
     params = []
 
     if category:
@@ -3559,7 +3639,7 @@ def api_recommendations():
         if product_names:
             placeholders = ', '.join(['?'] * len(product_names))
             rows = db.execute(
-                f"SELECT * FROM products WHERE name IN ({placeholders}) AND stock_status > 0",
+                f"SELECT * FROM products WHERE name IN ({placeholders}) AND stock_status > 0 AND IFNULL(is_archived, 0) = 0",
                 tuple(product_names)
             ).fetchall()
             row_by_name = {row['name'].strip().lower(): row for row in rows}
@@ -3721,7 +3801,7 @@ STRICT GUARDRAILS & RULES:
         budget_amount = _extract_budget_amount(user_message)
         if budget_amount is not None:
             inventory_rows = db.execute(
-                "SELECT name, price FROM products WHERE stock_status > 0"
+                "SELECT name, price FROM products WHERE stock_status > 0 AND IFNULL(is_archived, 0) = 0"
             ).fetchall()
             matched_products = _extract_products_from_text(ai_text, inventory_rows)
             verified_total = sum(price for _, price in matched_products)
@@ -3816,12 +3896,12 @@ def place_order():
                 return {'error': 'Invalid product id provided.'}, 400
 
             product_row = db.execute(
-                'SELECT product_id, name, category, unit, price FROM products WHERE product_id = ?',
+                'SELECT product_id, name, category, unit, price FROM products WHERE product_id = ? AND IFNULL(is_archived, 0) = 0',
                 (product_id,)
             ).fetchone()
         elif product_name:
             product_row = db.execute(
-                'SELECT product_id, name, category, unit, price FROM products WHERE name = ?',
+                'SELECT product_id, name, category, unit, price FROM products WHERE name = ? AND IFNULL(is_archived, 0) = 0',
                 (product_name,)
             ).fetchone()
         else:
