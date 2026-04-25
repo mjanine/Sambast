@@ -161,7 +161,7 @@ def get_log_category(action_text):
 def product_image(filename):
     safe_filename = secure_filename(filename or '')
     if not safe_filename:
-        return redirect(url_for('static', filename='img/user/user-male-circle.png'))
+        return redirect(url_for('static', filename='img/no-image.svg'))
 
     # Resolve catalog-first then admin uploads, so seeded items work consistently.
     for folder in [app.config['PRODUCTS_FOLDER'], app.config['UPLOAD_FOLDER']]:

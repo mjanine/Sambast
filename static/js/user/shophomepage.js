@@ -125,7 +125,7 @@ function render(list) {
         var p = list[i];
         var imgSrc = p.image_filename
             ? '/product-image/' + encodeURIComponent(p.image_filename)
-            : '/static/img/user/user-male-circle.png';
+            : '/static/img/no-image.svg';
         var div = document.createElement('div');
         div.className = "product-card";
         div.id = "p-" + p.product_id;
@@ -388,7 +388,7 @@ async function fetchRecommendations(cartItems) {
 
                 var imgSrc = p.image_filename
                     ? '/product-image/' + encodeURIComponent(p.image_filename)
-                    : '/static/img/user/user-male-circle.png';
+                    : '/static/img/no-image.svg';
 
                 const card = document.createElement('div');
                 card.className = 'product-card';

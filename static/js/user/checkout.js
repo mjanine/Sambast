@@ -10,10 +10,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function resolveItemImage(item) {
         const rawImage = item?.image || item?.image_filename || item?.img || '';
-        if (!rawImage) return '/static/img/user/user-male-circle.png';
+        if (!rawImage) return '/static/img/no-image.svg';
 
         const image = String(rawImage).trim();
-        if (!image) return '/static/img/user/user-male-circle.png';
+        if (!image) return '/static/img/no-image.svg';
 
         if (image.startsWith('http://') || image.startsWith('https://') || image.startsWith('/')) {
             return image;
@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const div = document.createElement('div');
                 div.className = 'checkout-item';
                 div.innerHTML = `
-                    <div class="checkout-img"><img src="${imgSrc}" alt="${item.name}" style="width:100%;height:100%;object-fit:cover;border-radius:4px;" onerror="this.onerror=null;this.src='/static/img/user/user-male-circle.png';"></div>
+                    <div class="checkout-img"><img src="${imgSrc}" alt="${item.name}" style="width:100%;height:100%;object-fit:cover;border-radius:4px;" onerror="this.onerror=null;this.src='/static/img/no-image.svg';"></div>
                     <div class="item-details">
                         <h2 class="item-name">${item.name}</h2>
                         <div class="tag-row">

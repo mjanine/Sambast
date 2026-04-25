@@ -6,10 +6,10 @@ let selectedItems = new Set();
 
 function resolveCartImage(item) {
     const rawImage = item?.image || item?.image_filename || item?.img || '';
-    if (!rawImage) return '/static/img/user/user-male-circle.png';
+    if (!rawImage) return '/static/img/no-image.svg';
 
     const image = String(rawImage).trim();
-    if (!image) return '/static/img/user/user-male-circle.png';
+    if (!image) return '/static/img/no-image.svg';
 
     if (image.startsWith('http://') || image.startsWith('https://') || image.startsWith('/')) {
         return image;
@@ -79,7 +79,7 @@ function renderCart() {
             onchange="toggleSelect(${index})"
             ${selectedItems.has(item.product_id + "_" + item.unit) ? 'checked' : ''}>
 
-        <img class="item-img" src="${imageSrc}" alt="${item.name}" onerror="this.onerror=null;this.src='/static/img/user/user-male-circle.png';">
+        <img class="item-img" src="${imageSrc}" alt="${item.name}" onerror="this.onerror=null;this.src='/static/img/no-image.svg';">
 
         <div class="item-details">
             <h2 class="item-name">${item.name}</h2>
