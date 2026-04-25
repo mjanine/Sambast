@@ -4,6 +4,41 @@ let allSelected = false;
 let cart = JSON.parse(localStorage.getItem('cart')) || [];
 let selectedItems = new Set();
 
+function normalizeUnitOptions(options) {
+    if (!Array.isArray(options)) return [];
+
+    return options.map(function(option) {
+        const label = String(option && option.label ? option.label : (option && option.value ? option.value : "")).trim();
+        const value = String(option && option.value ? option.value : label).trim();
+        if (!label || !value) return null;
+
+        const quantity = Number(option && option.quantity);
+        const multiplierValue = Number(option && option.multiplier);
+        const multiplier = Number.isFinite(multiplierValue) ? multiplierValue : (Number.isFinite(quantity) ? quantity : 1);
+
+        return {
+            label: label,
+            value: value,
+            multiplier: multiplier
+        };
+    }).filter(Boolean);
+}
+
+function getOptionMultiplier(option) {
+    if (!option) return 1;
+
+    const fromDataset = Number.parseFloat(option.dataset ? option.dataset.multiplier : option.getAttribute && option.getAttribute("data-multiplier"));
+    if (Number.isFinite(fromDataset)) return fromDataset;
+
+    const rawText = String(option.label || option.value || option.textContent || "").trim();
+    const numericMatch = rawText.match(/^(\d+(?:\.\d+)?)\s*(?:kg|kgs|pc|pcs|piece|pieces|pack|packs|box|boxes|bottle|bottles|pouch|pouches)?\b/i);
+    if (numericMatch) {
+        return Number.parseFloat(numericMatch[1]);
+    }
+
+    return 1;
+}
+
 function resolveCartImage(item) {
     const rawImage = item?.image || item?.image_filename || item?.img || '';
     if (!rawImage) return '/static/img/no-image.svg';
@@ -268,6 +303,11 @@ document.querySelector('.checkout-btn').addEventListener('click', () => {
 function getUnitOptions(product) {
     if (!product) return [{ label: "1 pc", value: "1 pc", multiplier: 1 }];
 
+    const storedUnitOptions = normalizeUnitOptions(product.unit_options);
+    if (storedUnitOptions.length > 0) {
+        return storedUnitOptions;
+    }
+
     const name = (product.name || "").toLowerCase();
     const cat = (product.category || "").toLowerCase();
 
@@ -384,7 +424,7 @@ function updateUnit(index) {
     const option = select.options[select.selectedIndex];
 
     const newUnit = option.value;
-    const newMultiplier = parseFloat(option.dataset.multiplier || 1);
+    const newMultiplier = getOptionMultiplier(option);
 
     const currentItem = cart[index];
 

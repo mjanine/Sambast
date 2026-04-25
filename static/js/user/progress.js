@@ -12,11 +12,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const lastItems = JSON.parse(localStorage.getItem('lastOrderItems')) || [];
     const lastOrderNo = localStorage.getItem('lastOrderNo');
 
-    const safeTotal = parseFloat(lastTotal || 0);
+    const lastDiscount = parseFloat(localStorage.getItem('lastOrderDiscount') || 0);
+const lastSubtotal = parseFloat(lastTotal || 0);
+
+const finalTotal = lastSubtotal - lastDiscount;
 
 if (totalDisplay) {
-    totalDisplay.innerText = `₱${safeTotal.toFixed(2)}`;
+    totalDisplay.innerText = `₱${(finalTotal || 0).toFixed(2)}`;
 }
+
+const discountRow = document.getElementById('discountRow');
+const discountDisplay = document.getElementById('progressDiscount');
+
+if (lastDiscount > 0) {
+    if (discountRow) discountRow.style.display = "flex";
+    if (discountDisplay) discountDisplay.innerText = (lastDiscount || 0).toFixed(2);
+} else {
+    if (discountRow) discountRow.style.display = "none";
+}
+
     if (orderNoDisplay && lastOrderNo) orderNoDisplay.innerText = lastOrderNo;
 
     // Render items list onto the receipt UI
@@ -48,16 +62,17 @@ if (totalDisplay) {
 
     // Handle "Back to Shop" navigation (Fixes the 404 error)
     if (backToShopBtn) {
-        backToShopBtn.addEventListener('click', () => {
-            // Optional: Clear specific order storage so it doesn't persist forever
-            localStorage.removeItem('lastOrderItems');
-            localStorage.removeItem('lastOrderTotal');
-            localStorage.removeItem('lastOrderNo');
+    backToShopBtn.addEventListener('click', () => {
+        // clear order session (optional)
+        localStorage.removeItem('lastOrderItems');
+        localStorage.removeItem('lastOrderTotal');
+        localStorage.removeItem('lastOrderDiscount');
+        localStorage.removeItem('lastOrderNo');
 
-            // Redirect to the Flask route, not the .html file
-            window.location.href = '/shop';
-        });
-    }
+        window.location.href = '/shop';
+    });
+}
+
 
     /**
      * Updates the UI text and colors based on the current order status

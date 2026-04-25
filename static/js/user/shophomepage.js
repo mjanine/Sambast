@@ -3,8 +3,49 @@ var currentCheckout = [];
 var recommendationInFlight = false;
 var lastRecommendationSignature = null;
 
+
+function normalizeUnitOptions(options) {
+    if (!Array.isArray(options)) return [];
+
+    return options.map(function(option) {
+        const label = String(option && option.label ? option.label : (option && option.value ? option.value : "")).trim();
+        const value = String(option && option.value ? option.value : label).trim();
+        if (!label || !value) return null;
+
+        const quantity = Number(option && option.quantity);
+        const multiplierValue = Number(option && option.multiplier);
+        const multiplier = Number.isFinite(multiplierValue) ? multiplierValue : (Number.isFinite(quantity) ? quantity : 1);
+
+        return {
+            label: label,
+            value: value,
+            multiplier: multiplier
+        };
+    }).filter(Boolean);
+}
+
+function getOptionMultiplier(option) {
+    if (!option) return 1;
+
+    const fromDataset = Number.parseFloat(option.dataset ? option.dataset.multiplier : option.getAttribute && option.getAttribute("data-multiplier"));
+    if (Number.isFinite(fromDataset)) return fromDataset;
+
+    const rawText = String(option.label || option.value || option.textContent || "").trim();
+    const numericMatch = rawText.match(/^(\d+(?:\.\d+)?)\s*(?:kg|kgs|pc|pcs|piece|pieces|pack|packs|box|boxes|bottle|bottles|pouch|pouches)?\b/i);
+    if (numericMatch) {
+        return Number.parseFloat(numericMatch[1]);
+    }
+
+    return 1;
+}
+
 function getUnitOptions(product) {
     if (!product) return [{ label: "1 pc", value: "1 pc", multiplier: 1 }];
+
+    const storedUnitOptions = normalizeUnitOptions(product.unit_options);
+    if (storedUnitOptions.length > 0) {
+        return storedUnitOptions;
+    }
 
     const name = (product.name || "").toLowerCase();
     const cat = (product.category || "").toLowerCase();
@@ -132,6 +173,9 @@ function render(list) {
         var unitLabel = (p.unit || "pcs").trim();
         var stockValue = Number(p.stock_status || 0);
         var stockLabel = stockValue + " " + unitLabel + (stockValue === 0 ? " (Out of Stock)" : "");
+        var initialUnitOptions = getUnitOptions(p);
+        var initialMultiplier = initialUnitOptions.length > 0 ? Number(initialUnitOptions[0].multiplier || 1) : 1;
+        var initialPrice = Number(p.price || 0) * initialMultiplier;
         div.innerHTML = `
             <div class="flip-inner">
                 <div class="front-face" onclick="toggle(${p.product_id})">
@@ -169,7 +213,7 @@ function render(list) {
     </select>
 </div>
                     </div>
-                    <p class="label-price">₱${p.price}</p>
+                    <p class="label-price">₱${initialPrice.toFixed(2)}</p>
                     <p class="label-cat">Stock: ${stockLabel}</p>
                     <div class="btn-row" onclick="event.stopPropagation()">
                         <button class="cart-act" onclick="addCart(${p.product_id},${p.price})">CART</button>
@@ -242,7 +286,7 @@ function addCart(id, pr) {
     var selectedOption = unitSelect.options[unitSelect.selectedIndex];
 
     var unit = selectedOption.value;
-    var multiplier = parseFloat(selectedOption.dataset.multiplier || 1);
+    var multiplier = getOptionMultiplier(selectedOption);
 
     var product = data.find(p => p.product_id === id);
     if (!product) return;
@@ -288,7 +332,7 @@ function buyNow(id) {
     var selectedOption = unitSelect.options[unitSelect.selectedIndex];
 
     var unit = selectedOption.value;
-    var multiplier = parseFloat(selectedOption.dataset.multiplier || 1);
+    var multiplier = getOptionMultiplier(selectedOption);
 
     var directItem = [{
         product_id: product.product_id,
@@ -705,13 +749,18 @@ function adjustChatWidget() {
     const isVisible = window.getComputedStyle(bottomBar).display !== 'none';
 
     if (isVisible) {
-        chatBtn.style.bottom = '80px';
-        chatWindow.style.bottom = '90px';
-    } else {
-        chatBtn.style.bottom = '45px';
+        chatBtn.style.bottom = '40px';
         chatWindow.style.bottom = '50px';
+    } else {
+        chatBtn.style.bottom = '20px';
+        chatWindow.style.bottom = '30px';
     }
 }
+
+
+
+
+
 
 setInterval(adjustChatWidget, 300);
 
@@ -751,7 +800,7 @@ function updateCardPrice(productId) {
     const unitSelect = document.getElementById("unit-" + productId);
     const selectedOption = unitSelect.options[unitSelect.selectedIndex];
 
-    const multiplier = parseFloat(selectedOption.dataset.multiplier || 1);
+    const multiplier = getOptionMultiplier(selectedOption);
 
     const basePrice = parseFloat(product.price);
 

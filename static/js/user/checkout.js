@@ -84,15 +84,59 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span class="mini-tag">Qty: ${item.qty}</span>
                             <span class="mini-tag">${item.unit}</span>
                         </div>
-                        <p class="item-amount">Product Amount: ₱${itemTotal}</p>
                     </div>
                 `;
                 listContainer.appendChild(div);
             });
         }
 
-        if (finalTotalDisplay) finalTotalDisplay.innerText = currentTotal.toFixed(2);
+        updateSummary();
     };
+
+    function updateSummary() {
+        const subtotalDisplay = document.getElementById('displaySubtotal');
+        const originalDisplay = document.getElementById('displayOriginal');
+        const discountDisplay = document.getElementById('displayDiscount');
+        const totalDisplay = document.getElementById('displayTotal');
+        
+        const originalPrice = currentTotal;
+        const totalDiscount = 0.00;
+        const finalTotal = originalPrice - totalDiscount;
+        
+        if (subtotalDisplay) {
+            subtotalDisplay.innerText = currentTotal > 0 ? currentTotal.toFixed(2) : "0.00";
+        }
+        if (originalDisplay) {
+            originalDisplay.innerText = originalPrice > 0 ? originalPrice.toFixed(2) : "0.00";
+        }
+        if (discountDisplay) {
+            discountDisplay.innerText = totalDiscount > 0 ? totalDiscount.toFixed(2) : "0.00";
+        }
+        if (totalDisplay) {
+            totalDisplay.innerText = finalTotal > 0 ? finalTotal.toFixed(2) : "0.00";
+        }
+        
+        if (finalTotalDisplay) {
+            finalTotalDisplay.innerText = finalTotal > 0 ? finalTotal.toFixed(2) : "0.00";
+        }
+        
+        const subtotalRow = document.getElementById('subtotalRow');
+        const originalRow = document.getElementById('originalRow');
+        const discountRow = document.getElementById('discountRow');
+        const divider = document.getElementById('divider');
+        
+        if (totalDiscount > 0) {
+            if (subtotalRow) subtotalRow.style.display = 'flex';
+            if (originalRow) originalRow.style.display = 'flex';
+            if (discountRow) discountRow.style.display = 'flex';
+            if (divider) divider.style.display = 'block';
+        } else {
+            if (subtotalRow) subtotalRow.style.display = 'none';
+            if (originalRow) originalRow.style.display = 'none';
+            if (discountRow) discountRow.style.display = 'none';
+            if (divider) divider.style.display = 'none';
+        }
+    }
     renderCheckout();
 
     const placeOrderBtn = document.getElementById('placeOrderBtn');

@@ -16,6 +16,7 @@ const stockInput = document.getElementById("formStock");
 const stockModeSelect = document.getElementById("formStockMode");
 const formCategory = document.getElementById("formCategory");
 const categoryQuickList = document.getElementById("categoryQuickList");
+const formUnitOptionsJson = document.getElementById("formUnitOptionsJson");
 const categoryBuilderModal = document.getElementById("categoryBuilderModal");
 const categoryNameInput = document.getElementById("categoryNameInput");
 const categoryQtyInput = document.getElementById("categoryQtyInput");
@@ -53,6 +54,26 @@ function getCardName(card) {
 
 function getCardCategory(card) {
     return String(card.getAttribute("data-pcat") || "").trim();
+}
+
+function getNumericMultiplier(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 1;
+}
+
+function syncProductUnitOptionsField() {
+    if (!formUnitOptionsJson || !formCategory) return;
+
+    const categoryName = String(formCategory.value || "").trim();
+    const options = Array.isArray(categoryOptionsByName[categoryName]) ? categoryOptionsByName[categoryName] : [];
+
+    formUnitOptionsJson.value = JSON.stringify(options.map(entry => ({
+        quantity: String(entry && entry.quantity ? entry.quantity : "").trim(),
+        unit: String(entry && entry.unit ? entry.unit : "").trim(),
+        multiplier: getNumericMultiplier(entry && entry.multiplier != null ? entry.multiplier : entry && entry.quantity),
+        label: `${String(entry && entry.quantity ? entry.quantity : "").trim()} ${String(entry && entry.unit ? entry.unit : "").trim()}`.trim(),
+        value: `${String(entry && entry.quantity ? entry.quantity : "").trim()} ${String(entry && entry.unit ? entry.unit : "").trim()}`.trim()
+    })));
 }
 
 function getInventoryCategories() {
@@ -150,7 +171,8 @@ function loadCategoryState() {
                     ? entry.options
                         .map(optionEntry => ({
                             quantity: String(optionEntry && optionEntry.quantity ? optionEntry.quantity : "").trim(),
-                            unit: String(optionEntry && optionEntry.unit ? optionEntry.unit : "").trim()
+                            unit: String(optionEntry && optionEntry.unit ? optionEntry.unit : "").trim(),
+                            multiplier: getNumericMultiplier(optionEntry && optionEntry.multiplier != null ? optionEntry.multiplier : optionEntry && optionEntry.quantity)
                         }))
                         .filter(optionEntry => optionEntry.quantity && optionEntry.unit)
                     : [];
@@ -411,6 +433,7 @@ function initializeCategoryState() {
 
     renderCategorySelect();
     renderCategoryQuickList();
+    syncProductUnitOptionsField();
     saveCategoryState();
 }
 
@@ -561,6 +584,8 @@ window.openEditModal = function(id, name, price, category, desc, stock, unit, im
         unitSelect.value = unit || "pcs";
     }
 
+    syncProductUnitOptionsField();
+
     if (removeImageFlag) removeImageFlag.value = "0";
     if (imageFilename) {
         setImagePreview(`/product-image/${imageFilename}`);
@@ -652,6 +677,8 @@ if (formCategory) {
         } else {
             hideCategoryBuilder();
         }
+
+        syncProductUnitOptionsField();
     });
 }
 
@@ -685,7 +712,7 @@ if (addCategoryOptionBtn) {
 
         const exists = currentBuilderOptions.some(entry => entry.quantity === quantity && entry.unit === unit);
         if (!exists) {
-            currentBuilderOptions.push({ quantity, unit });
+            currentBuilderOptions.push({ quantity, unit, multiplier: getNumericMultiplier(quantity) });
             renderCategoryOptionList();
         }
 
@@ -700,6 +727,7 @@ if (saveCategoryBuilderBtn) {
 
         ensureCategoryOption(categoryName);
         categoryOptionsByName[categoryName] = currentBuilderOptions.slice();
+        syncProductUnitOptionsField();
         saveCategoryState();
         renderCategoryQuickList();
         hideCategoryBuilder();
@@ -714,7 +742,7 @@ if (editCategoryAddOptionBtn) {
 
         const exists = currentEditOptions.some(entry => entry.quantity === quantity && entry.unit === unit);
         if (!exists) {
-            currentEditOptions.push({ quantity, unit });
+            currentEditOptions.push({ quantity, unit, multiplier: getNumericMultiplier(quantity) });
             renderEditCategoryOptionList();
         }
 
@@ -751,6 +779,7 @@ if (saveEditCategoryBtn) {
         const preferredValue = previousSelected === oldName ? targetName : previousSelected;
         renderCategorySelect(preferredValue);
         renderCategoryQuickList();
+        syncProductUnitOptionsField();
         saveCategoryState();
 
         closeCategoryEditModal();
@@ -762,6 +791,7 @@ if (saveEditCategoryBtn) {
 
 if (productForm) {
     productForm.addEventListener("submit", function(e) {
+        syncProductUnitOptionsField();
         if (formCategory && formCategory.value === "__add_new__") {
             e.preventDefault();
             showCategoryBuilder();

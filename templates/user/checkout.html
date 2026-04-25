@@ -36,8 +36,26 @@
             <div class="info-card products-container" id="checkoutList">
                 </div>
 
-            
-                
+            <div class="info-card summary-section" style="padding: 16px;">
+                <p class="order-summary-label">Order Summary</p>
+                <div class="summary-row summary-header" id="subtotalRow" style="display: none;">
+                    <span class="summary-label bold">Product Subtotal</span>
+                    <span class="summary-value bold">₱<span id="displaySubtotal">0.00</span></span>
+                </div>
+                <div class="summary-row" id="originalRow" style="display: none;">
+                    <span class="summary-label gray">Original Price</span>
+                    <span class="summary-value gray">₱<span id="displayOriginal">0.00</span></span>
+                </div>
+                <div class="summary-row" id="discountRow" style="display: none;">
+                    <span class="summary-label gray">Product Discount</span>
+                    <span class="summary-value gray discount-value">-₱<span id="displayDiscount" class="discount-number">0.00</span></span>
+                </div>
+                <div class="summary-divider" id="divider" style="display: none;"></div>
+                <div class="summary-row summary-total" id="totalRow">
+                    <span class="summary-label bold">Total</span>
+                    <span class="summary-value bold">₱<span id="displayTotal">0.00</span></span>
+                </div>
+            </div>
 
             <div class="payment-section info-card" style="padding: 12px 16px;">
                 <p style="font-weight:600; margin-bottom:8px;">PAYMENT METHOD</p>

@@ -336,6 +336,10 @@ def _run_migrations(db):
             cursor.execute("ALTER TABLE products ADD COLUMN archived_at TIMESTAMP")
             db.commit()
             print("Migration: Added archived_at column to products table.")
+        if product_columns and 'unit_options_json' not in product_columns:
+            cursor.execute("ALTER TABLE products ADD COLUMN unit_options_json TEXT DEFAULT '[]'")
+            db.commit()
+            print("Migration: Added unit_options_json column to products table.")
 
         # Migration 1c: Ensure order_items unit transaction columns exist
         cursor.execute("PRAGMA table_info(order_items)")
@@ -446,6 +450,7 @@ def init_db():
             stock_status INTEGER DEFAULT 1, 
             image_filename TEXT, 
             description TEXT,
+            unit_options_json TEXT DEFAULT '[]',
             is_archived INTEGER DEFAULT 0,
             archived_at TIMESTAMP)''')
 
@@ -1810,6 +1815,7 @@ def ensure_startup_schema_guard():
 VET_DISCLAIMER = "I am an AI, not a veterinarian. Please consult a vet for medical advice."
 
 def _product_row_to_dict(product_row):
+    unit_options = _get_product_unit_options(product_row)
     return {
         'product_id': product_row['product_id'],
         'name': product_row['name'],
@@ -1818,7 +1824,8 @@ def _product_row_to_dict(product_row):
         'price': product_row['price'],
         'description': product_row['description'],
         'image_filename': product_row['image_filename'],
-        'stock_status': product_row['stock_status']
+        'stock_status': product_row['stock_status'],
+        'unit_options': unit_options
     }
 
 def _normalize_recommendation_names(candidate):
@@ -2069,6 +2076,76 @@ def _normalize_default_unit_label(unit_value):
         return 'per pouch'
     return str(unit_value or '').strip()
 
+def _normalize_unit_options(raw_options):
+    if isinstance(raw_options, str):
+        try:
+            raw_options = json.loads(raw_options or '[]')
+        except Exception:
+            return []
+
+    if not isinstance(raw_options, list):
+        return []
+
+    normalized_options = []
+    seen_values = set()
+
+    for option in raw_options:
+        if not isinstance(option, dict):
+            continue
+
+        quantity_text = str(option.get('quantity') or '').strip()
+        unit_text = str(option.get('unit') or '').strip()
+        label_text = str(option.get('label') or '').strip()
+        value_text = str(option.get('value') or '').strip()
+
+        if not label_text:
+            if quantity_text and unit_text:
+                label_text = f"{quantity_text} {unit_text}".strip()
+            else:
+                label_text = quantity_text or unit_text or value_text
+
+        if not value_text:
+            value_text = label_text
+
+        if not label_text or not value_text:
+            continue
+
+        multiplier_value = option.get('multiplier')
+        if multiplier_value in (None, ''):
+            try:
+                multiplier_value = float(quantity_text)
+            except (TypeError, ValueError):
+                multiplier_value = 1.0
+
+        try:
+            multiplier_value = float(multiplier_value)
+        except (TypeError, ValueError):
+            multiplier_value = 1.0
+
+        value_key = _normalize_unit_key(value_text)
+        if not value_key or value_key in seen_values:
+            continue
+
+        seen_values.add(value_key)
+        normalized_options.append({
+            'label': label_text,
+            'value': value_text,
+            'multiplier': multiplier_value
+        })
+
+    return normalized_options
+
+def _get_product_unit_options(product_row):
+    stored_options = _normalize_unit_options(product_row['unit_options_json']) if 'unit_options_json' in product_row.keys() else []
+    if stored_options:
+        return stored_options
+
+    return _get_backend_unit_options(
+        product_row['name'],
+        product_row['category'],
+        product_row['unit']
+    )
+
 def _get_backend_unit_options(product_name, category, default_unit='pcs'):
     name = (product_name or '').lower()
     cat = (category or '').lower()
@@ -2234,9 +2311,20 @@ def admin_orders():
     status_filter = request.args.get('status')
     db = get_db()
     if status_filter:
-        orders = db.execute('SELECT * FROM orders WHERE status = ? ORDER BY created_at DESC', (status_filter,)).fetchall()
+        orders = db.execute('''
+            SELECT orders.*, users.name AS customer_name
+            FROM orders
+            LEFT JOIN users ON orders.user_id = users.user_id
+            WHERE orders.status = ?
+            ORDER BY orders.created_at DESC
+        ''', (status_filter,)).fetchall()
     else:
-        orders = db.execute('SELECT * FROM orders ORDER BY created_at DESC').fetchall()
+        orders = db.execute('''
+            SELECT orders.*, users.name AS customer_name
+            FROM orders
+            LEFT JOIN users ON orders.user_id = users.user_id
+            ORDER BY orders.created_at DESC
+        ''').fetchall()
 
     # Attach line items per order so the admin view matches the transaction receipt.
     enriched_orders = []
@@ -2246,6 +2334,8 @@ def admin_orders():
             SELECT
                 oi.quantity,
                 oi.price_at_time,
+                oi.selected_unit,
+                oi.unit_multiplier,
                 p.name AS product_name
             FROM order_items oi
             LEFT JOIN products p ON p.product_id = oi.product_id
@@ -2257,6 +2347,8 @@ def admin_orders():
             {
                 'product_name': item['product_name'] or 'Unknown Product',
                 'quantity': item['quantity'],
+                'selected_unit': item['selected_unit'] or '1 pc',
+                'unit_multiplier': float(item['unit_multiplier'] or 1),
                 'subtotal': (item['quantity'] or 0) * (item['price_at_time'] or 0)
             }
             for item in items
@@ -2279,14 +2371,19 @@ def update_order_status(order_id):
     if new_status == 'Completed' and current_order and current_order['status'] != 'Completed':
         # Fetch all items in this order
         order_items = db.execute(
-            'SELECT product_id, quantity FROM order_items WHERE order_id = ?',
+            'SELECT product_id, quantity, unit_multiplier FROM order_items WHERE order_id = ?',
             (order_id,)
         ).fetchall()
         
         # Deduct stock for each product
         for item in order_items:
             product_id = item['product_id']
-            quantity = item['quantity']
+            quantity = float(item['quantity'] or 0)
+            unit_multiplier = float(item['unit_multiplier'] or 1)
+            stock_deduction = quantity * unit_multiplier
+
+            if stock_deduction <= 0:
+                continue
             
             # Update the live stock column used by the rest of the app
             db.execute(
@@ -2300,7 +2397,7 @@ def update_order_status(order_id):
                            ELSE 0
                        END
                    WHERE product_id = ?''',
-                (quantity, quantity, quantity, quantity, product_id)
+                (stock_deduction, stock_deduction, stock_deduction, stock_deduction, product_id)
             )
     
     db.execute('UPDATE orders SET status = ? WHERE order_id = ?', (new_status, order_id))
@@ -2373,6 +2470,7 @@ def add_product():
     unit = (request.form.get('unit') or 'pcs').strip() or 'pcs'
     price = request.form.get('price')
     description = request.form.get('description')
+    unit_options_json = json.dumps(_normalize_unit_options(request.form.get('unit_options_json', '[]')))
     stock_status = request.form.get('stock_status', 1)
     file = request.files.get('image')
 
@@ -2389,8 +2487,8 @@ def add_product():
     db = get_db()
     if category:
         db.execute('INSERT OR IGNORE INTO categories (name) VALUES (?)', (category,))
-    db.execute('''INSERT INTO products (name, category, unit, price, stock_status, image_filename, description) 
-                  VALUES (?, ?, ?, ?, ?, ?, ?)''', (name, category, unit, price, stock_status, filename, description))
+    db.execute('''INSERT INTO products (name, category, unit, price, stock_status, image_filename, description, unit_options_json) 
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', (name, category, unit, price, stock_status, filename, description, unit_options_json))
     action_text = f"Added product: {name}"
     db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
                (session['admin_id'], action_text, get_log_category(action_text)))
@@ -2407,6 +2505,7 @@ def edit_product(product_id):
     unit = (request.form.get('unit') or 'pcs').strip() or 'pcs'
     price = request.form.get('price')
     description = request.form.get('description')
+    unit_options_json = json.dumps(_normalize_unit_options(request.form.get('unit_options_json', '[]')))
     stock_status = request.form.get('stock_status')
     remove_image = request.form.get('remove_image', '0') == '1'
 
@@ -2428,8 +2527,8 @@ def edit_product(product_id):
     elif remove_image:
         db.execute('UPDATE products SET image_filename = ? WHERE product_id = ?', ('', product_id))
 
-    db.execute('''UPDATE products SET name=?, category=?, unit=?, price=?, description=?, stock_status=? 
-                  WHERE product_id = ?''', (name, category, unit, price, description, stock_status, product_id))
+    db.execute('''UPDATE products SET name=?, category=?, unit=?, price=?, description=?, stock_status=?, unit_options_json=? 
+                  WHERE product_id = ?''', (name, category, unit, price, description, stock_status, unit_options_json, product_id))
     action_text = f"Edited product ID: {product_id}"
     db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
                (session['admin_id'], action_text, get_log_category(action_text)))
@@ -3595,7 +3694,8 @@ def get_products():
         'price'          : p['price'],
         'description'    : p['description'],
         'image_filename' : p['image_filename'],
-        'stock_status'   : p['stock_status']
+        'stock_status'   : p['stock_status'],
+        'unit_options'   : _get_product_unit_options(p)
     } for p in products]
 
 
@@ -3909,12 +4009,12 @@ def place_order():
                 return {'error': 'Invalid product id provided.'}, 400
 
             product_row = db.execute(
-                'SELECT product_id, name, category, unit, price FROM products WHERE product_id = ? AND IFNULL(is_archived, 0) = 0',
+                'SELECT product_id, name, category, unit, price, unit_options_json FROM products WHERE product_id = ? AND IFNULL(is_archived, 0) = 0',
                 (product_id,)
             ).fetchone()
         elif product_name:
             product_row = db.execute(
-                'SELECT product_id, name, category, unit, price FROM products WHERE name = ? AND IFNULL(is_archived, 0) = 0',
+                'SELECT product_id, name, category, unit, price, unit_options_json FROM products WHERE name = ? AND IFNULL(is_archived, 0) = 0',
                 (product_name,)
             ).fetchone()
         else:
@@ -3923,11 +4023,7 @@ def place_order():
         if not product_row:
             return {'error': 'One or more items reference an unknown product.'}, 400
 
-        unit_options = _get_backend_unit_options(
-            product_row['name'],
-            product_row['category'],
-            product_row['unit']
-        )
+        unit_options = _get_product_unit_options(product_row)
 
         if requested_unit:
             selected_option = _find_unit_option(unit_options, requested_unit)

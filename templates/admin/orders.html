@@ -81,7 +81,7 @@
             <div class="products">
                 {% if order['items'] %}
                     {% for item in order['items'] %}
-                    <div>{{ item['product_name'] }} × {{ item['quantity'] }} <span>₱ {{ '%.2f'|format(item['subtotal']) }}</span></div>
+                    <div>{{ item['product_name'] }} ({{ item['selected_unit'] or '1 pc' }}) × {{ item['quantity'] }} <span>₱ {{ '%.2f'|format(item['subtotal']) }}</span></div>
                     {% endfor %}
                 {% else %}
                     <div>No items found for this order.</div>
