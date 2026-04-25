@@ -232,3 +232,71 @@ body { background-color: var(--bg-antique-cream); }
 
 .place-label { font-weight: 800; font-size: 16px; color: #fff; }
 .total-label { font-weight: 800; font-size: 14px; color: #fff; text-transform: lowercase; }
+
+.summary-section {
+    background: var(--fill-natural-beige) !important;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.order-summary-label {
+    font-weight: 800;
+    font-size: 14px;
+    color: var(--text-pure-black);
+    margin-bottom: 8px;
+}
+
+.summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+}
+
+.summary-label {
+    color: var(--text-pure-black);
+}
+
+.summary-label.bold {
+    font-weight: 800;
+}
+
+.summary-label.gray {
+    font-weight: 400;
+    color: #888;
+}
+
+.summary-value {
+    color: var(--text-pure-black);
+    text-align: right;
+}
+
+.summary-value.bold {
+    font-weight: 800;
+}
+
+.summary-value.gray {
+    font-weight: 400;
+    color: #888;
+}
+
+.discount-value {
+    color: #888;
+}
+
+.discount-number {
+    color: var(--action-ruby-red);
+}
+
+.summary-divider {
+    height: 1px;
+    background: #ddd;
+    margin: 4px 0;
+}
+
+.summary-total {
+    margin-top: 8px;
+    font-size: 16px;
+}
