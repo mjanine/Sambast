@@ -18,3 +18,4 @@ static/uploads/*
 !static/uploads/.gitkeep
 
 seed_data.py
+create_admin.py
