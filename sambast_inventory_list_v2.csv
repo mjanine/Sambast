@@ -3,7 +3,7 @@ B-Meg Integra Power Maxx 1,High-performance chick booster crumble,48,Poultry (Ch
 Bio 800,Growth-enhancing poultry concentrate,65,Poultry
 Goodest Cat Food,Tender chunks in gravy (recalculated per kg),280,Cats
 Special Cat Chicken and Turkey,High-protein dry kibble with chicken and turkey,165,Cats
-Marine Fish Flavor (Generic/Local),Standard fish-based maintenance dry food,140,Cats
+Marine Fish Flavor,Standard fish-based maintenance dry food,140,Cats
 Pedigree Adult Wet Food,Savory meat in gravy (recalculated per kg),350,Dogs
 Turtle Pellets,Floating nutrient pellets for aquatic turtles,560,Reptiles (Turtles)
 Hikari Goldfish Staple,Daily nutritional floating pellets for goldfish,450,Aquarium Fish
@@ -21,9 +21,9 @@ B-Meg Power Maxx,Premium performance chick booster,50,Poultry (Chicks)
 Power Maxx Chick Booster,Standard poultry booster feed,45,Poultry (Chicks)
 Baby Stag Booster,Nutrient-dense booster for young gamefowl,58,Poultry (Gamefowl)
 Bird Seed African Mix,Specialized seed mix for African Lovebirds,110,Birds
-Paracetamol Para-V,Analgesic and antipyretic for livestock/pets,1200,Livestock & Pets
+Sera Raffy P,Analgesic and antipyretic for livestock/pets,1200,Livestock & Pets
 Levamisole Bulatigok,Deworming solution for poultry/livestock,950,Poultry & Livestock
-Bastoned Plus Levamisole + Albendazole,Broad-spectrum anthelmintic dewormer,1100,Livestock
+Bastoned Plus Levamisole Albendazole,Broad-spectrum anthelmintic dewormer,1100,Livestock
 Progen Z,Probiotic growth and health supplement,850,Livestock & Pets
 Breeder Ade,Vitamin supplement for breeding health,900,Livestock
 Dextrose Powder,Rehydration and energy supplement,180,General Pets/Livestock
@@ -39,7 +39,7 @@ Aozi Adult Beef,Hypoallergenic organic dry food,180,Dogs
 Vitality High Energy,Premium lamb and beef dog food,220,Dogs
 Top Breed Puppy,Value-for-money balanced puppy food,110,Dogs
 Top Breed Adult,Common Filipino brand for adult dogs,95,Dogs
-Smartheart Puppy Beef & Milk,Dry food for puppies of all breeds,145,Dogs
+Smartheart Puppy Beef and Milk,Dry food for puppies of all breeds,145,Dogs
 Nutri Chunks Adult Maintenance,Daily health formula for adult dogs,115,Dogs
 Pilmico Rabbit Pellets,High fiber pellets for breeding rabbits,38,Rabbits
 Smartheart Rabbit Food,Enriched with alfalfa and nutrients,115,Rabbits
