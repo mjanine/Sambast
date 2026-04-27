@@ -90,7 +90,7 @@ body, html {
 }
 
 .phone-number { 
-    color: var(--sunny); 
+    color: var(--bg-footer-blue); 
     font-weight: 800; 
 }
 
@@ -134,7 +134,7 @@ body, html {
     cursor: pointer; 
     margin-top: 5px; 
     font-family: 'Inter'; 
-    color: var(--text-pure-black);
+    color: var(--action-ruby-red);
 }
 
 .primary-btn {

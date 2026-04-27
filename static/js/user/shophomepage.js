@@ -40,77 +40,50 @@ function getOptionMultiplier(option) {
 }
 
 function getUnitOptions(product) {
-    if (!product) return [{ label: "1 pc", value: "1 pc", multiplier: 1 }];
-
-    const storedUnitOptions = normalizeUnitOptions(product.unit_options);
-    if (storedUnitOptions.length > 0) {
-        return storedUnitOptions;
+    if (!product) {
+        return [{ label: "1 pc", value: "1 pc", multiplier: 1 }];
     }
 
     const name = (product.name || "").toLowerCase();
     const cat = (product.category || "").toLowerCase();
 
-    const isFeedCategory = cat.includes("feeds");
+    // -----------------------------
+    // 1. CATEGORY DETECTION (FIXED ORDER)
+    // -----------------------------
+    const isMedicine = cat.includes("medicine");
+    const isSupply = cat.includes("supplies");
+    const isFeed = cat.includes("feeds");
 
-    const isPetFeed =
-        isFeedCategory &&
-        (name.includes("feed") ||
-         name.includes("chicken") ||
-         name.includes("dog food") ||
-         name.includes("cat food") ||
-         name.includes("rabbit feed") ||
-         name.includes("bird feed"));
+    // -----------------------------
+    // 2. BACKEND OPTIONS (SAFE FALLBACK)
+    // Only use if NO custom rule applies
+    // -----------------------------
+    const storedUnitOptions = normalizeUnitOptions(product.unit_options);
 
-    const isPoultry = name.includes("chicken") || name.includes("chick");
-    const isRabbitFeed = name.includes("rabbit");
-    const isBirdFeed = name.includes("bird");
+    const hasCustomRule =
+        isMedicine ||
+        isSupply ||
+        isFeed ||
+        /progen z/i.test(name);
 
-    const isSupply =
-        cat.includes("supplies") ||
-        name.includes("leash") ||
-        name.includes("collar") ||
-        name.includes("harness") ||
-        name.includes("bowl") ||
-        name.includes("feeder") ||
-        name.includes("cage") ||
-        name.includes("toy");
+    if (storedUnitOptions.length > 0 && !hasCustomRule) {
+        return storedUnitOptions;
+    }
 
-    const isLitter = name.includes("litter");
-
-    const isMedicine =
-        cat.includes("medicine") ||
-        name.includes("tablet") ||
-        name.includes("capsule") ||
-        name.includes("vitamin");
-
-    const isLiquid = name.includes("syrup") || name.includes("milk") || name.includes("gel");
-
-    const isWetFood = name.includes("wet") || name.includes("pouch");
-
-    const isPowder = name.includes("powder");
-
-    // 🐔 FEEDS (fraction-based pricing)
-    if ((isPetFeed || isPoultry || isRabbitFeed || isBirdFeed) && !name.includes("feeder")) {
+    // -----------------------------
+    // 3. SPECIAL PRODUCT OVERRIDE
+    // PROGEN Z FIX (YOUR REQUEST)
+    // -----------------------------
+    if (/progen z/i.test(name)) {
         return [
-            { label: "1kg", value: "1kg", multiplier: 1 },
-            { label: "1/2kg", value: "1/2kg", multiplier: 0.5 },
-            { label: "1/4kg", value: "1/4kg", multiplier: 0.25 },
-            { label: "1/8kg", value: "1/8kg", multiplier: 0.125 },
-            { label: "25kg sack", value: "25kg sack", multiplier: 25 },
-            { label: "50kg sack", value: "50kg sack", multiplier: 50 }
+            { label: "per sachet (200g)", value: "sachet_200g", multiplier: 0.2 },
+            { label: "per bottle (1kg)", value: "bottle_1kg", multiplier: 1 }
         ];
     }
 
-    // 🐱🐶 LITTER (fixed weight packs)
-    if (isLitter) {
-        return [
-            { label: "5kg", value: "5kg", multiplier: 5 },
-            { label: "10kg", value: "10kg", multiplier: 10 },
-            { label: "20kg", value: "20kg", multiplier: 20 }
-        ];
-    }
-
-    // 🧰 SUPPLIES (simple per piece)
+    // -----------------------------
+    // 4. SUPPLIES (PCS ONLY)
+    // -----------------------------
     if (isSupply) {
         return [
             { label: "1 pc", value: "1 pc", multiplier: 1 },
@@ -119,43 +92,118 @@ function getUnitOptions(product) {
         ];
     }
 
-    // 💊 MEDICINE (pack-based logic)
-    if (isMedicine) {
+    // -----------------------------
+    // 5. MEDICINE RULES
+    // -----------------------------
+    const isTabletMedicine =
+        isMedicine &&
+        /tablet|capsule|levamisole|albendazole|premoxil|vitmin pro/i.test(name);
+
+    const isLiquidMedicine =
+        isMedicine &&
+        /syrup|vitmin|vitamin|lc vit|cosi/i.test(name);
+
+    const isPowderMedicine =
+        isMedicine && /powder/i.test(name);
+
+    if (isTabletMedicine) {
         return [
             { label: "per tablet", value: "per tablet", multiplier: 1 },
             { label: "per strip", value: "per strip", multiplier: 10 },
-            { label: "per box", value: "per box", multiplier: 100 },
+            { label: "per box", value: "per box", multiplier: 100 }
+        ];
+    }
+
+    if (isLiquidMedicine) {
+        return [
             { label: "per bottle", value: "per bottle", multiplier: 1 }
         ];
     }
 
-    // 🧴 LIQUID
-    if (isLiquid) {
+    if (isPowderMedicine) {
         return [
-            { label: "per bottle", value: "per bottle", multiplier: 1 },
-            { label: "per box", value: "per box", multiplier: 12 }
+            { label: "per pack", value: "per pack", multiplier: 1 }
         ];
     }
 
-    // 🍖 WET FOOD
-    if (isWetFood) {
+    // -----------------------------
+    // 6. FEEDS
+    // -----------------------------
+    const isDryPetFood =
+        isFeed &&
+        /goodest|whiskas|top breed|smartheart|aozi|nutri chunks|powercat|pedigree/i.test(name);
+
+    const isWetPetFood =
+        isFeed &&
+        /wet food|sachet|pouch|pedigree adult wet/i.test(name);
+
+    const isBottleFeed =
+        /milk|beefpro|cosi pet milk/i.test(name);
+
+    const isBulkFeed =
+        isFeed &&
+        /b-meg|gallimax|power maxx|bio|stag|grower|booster|pilmico|integra|chicken feed|marine fish/i.test(name);
+
+    const isPowder = /powder|dextrose/i.test(name);
+
+    // -----------------------------
+    // DRY PET FOOD (PCS)
+    // -----------------------------
+    if (isDryPetFood) {
         return [
-            { label: "per pouch", value: "per pouch", multiplier: 1 },
-            { label: "per pack", value: "per pack", multiplier: 6 },
-            { label: "3 packs", value: "3 packs", multiplier: 3 },
-            { label: "6 packs", value: "6 packs", multiplier: 6 }
+            { label: "1 pc", value: "1 pc", multiplier: 1 },
+            { label: "2 pcs", value: "2 pcs", multiplier: 2 },
+            { label: "3 pcs", value: "3 pcs", multiplier: 3 }
         ];
     }
 
-    // 🧂 POWDER
-    if (isPowder) {
+    // -----------------------------
+    // WET FOOD (SACHET / BOX)
+    // -----------------------------
+    if (isWetPetFood) {
         return [
-            { label: "per pack", value: "per pack", multiplier: 1 },
-            { label: "per kilo", value: "per kilo", multiplier: 1 },
+            { label: "per sachet", value: "per sachet", multiplier: 1 },
             { label: "per box", value: "per box", multiplier: 10 }
         ];
     }
 
+    // -----------------------------
+    // BOTTLE / MILK PRODUCTS
+    // -----------------------------
+    if (isBottleFeed) {
+        return [
+            { label: "per bottle", value: "per bottle", multiplier: 1 },
+            { label: "per liter", value: "per liter", multiplier: 1 }
+        ];
+    }
+
+    // -----------------------------
+    // BULK FEEDS (KG / SACK)
+    // -----------------------------
+    if (isBulkFeed) {
+        return [
+            { label: "1kg", value: "1kg", multiplier: 1 },
+            { label: "1/2kg", value: "1/2kg", multiplier: 0.5 },
+            { label: "1/4kg", value: "1/4kg", multiplier: 0.25 },
+            { label: "10kg sack", value: "10kg sack", multiplier: 10 },
+            { label: "25kg sack", value: "25kg sack", multiplier: 25 }
+        ];
+    }
+
+    // -----------------------------
+    // POWDER
+    // -----------------------------
+    if (isPowder) {
+        return [
+            { label: "per pack", value: "per pack", multiplier: 1 },
+            { label: "1kg", value: "1kg", multiplier: 1 },
+            { label: "5kg", value: "5kg", multiplier: 5 }
+        ];
+    }
+
+    // -----------------------------
+    // DEFAULT
+    // -----------------------------
     return [{ label: "1 pc", value: "1 pc", multiplier: 1 }];
 }
 
@@ -215,8 +263,13 @@ function getDiscountBadgeText(product, unitValue, multiplier) {
     return `-₱${pricing.discountAmountPerUnit.toFixed(2)}`;
 }
 
-function render(list) {
-    var grid = document.getElementById('itemGrid');
+function render(list, isAISuggestions = false) {
+    var grid = isAISuggestions 
+        ? document.getElementById('ai-recommendations-grid')
+        : document.getElementById('itemGrid');
+    
+    if (!grid) return;
+    
     grid.innerHTML = "";
     for (var i = 0; i < list.length; i++) {
         var p = list[i];
@@ -234,12 +287,16 @@ function render(list) {
         var initialUnitValue = initialUnitOptions.length > 0 ? String(initialUnitOptions[0].value || initialUnitOptions[0].label || "1 pc") : "1 pc";
         var initialPricing = computePricing(p, initialMultiplier, initialUnitValue, 1);
         var discountBadgeText = getDiscountBadgeText(p, initialUnitValue, initialMultiplier);
+        
+        // AI suggestions use special category label
+        var categoryLabel = isAISuggestions ? `AI Suggestion (${p.category})` : p.category;
+        
         div.innerHTML = `
             <div class="flip-inner">
                 <div class="front-face" onclick="toggle(${p.product_id})">
                     <div class="img-box"><img src="${imgSrc}" style="width:100%;height:100%;object-fit:cover;"></div>
                     ${discountBadgeText ? `<span class="discount-badge">${discountBadgeText}</span>` : ""}
-                    <p class="label-cat">${p.category}</p>
+                    <p class="label-cat">${categoryLabel}</p>
                     <h2 class="label-name">${p.name}</h2>
                     <div class="input-row" onclick="event.stopPropagation()">
                         <div class="qty-box">
@@ -494,54 +551,17 @@ async function fetchRecommendations(cartItems) {
             : (Array.isArray(responsePayload.products) ? responsePayload.products : []);
 
         const container = document.getElementById('ai-recommendations-container');
-        const grid = document.getElementById('ai-recommendations-grid');
 
         if (recommendations && recommendations.length > 0) {
-            grid.innerHTML = '';
-            
+            // Ensure all recommendations are in the global data array
             recommendations.forEach(p => {
-                // Ensure the product exists in the global 'data' array
                 if (!data.find(item => item.product_id === p.product_id)) {
                     data.push(p);
                 }
-
-                var imgSrc = p.image_filename
-                    ? '/product-image/' + encodeURIComponent(p.image_filename)
-                    : '/static/img/no-image.svg';
-
-                const card = document.createElement('div');
-                card.className = 'product-card';
-                card.id = "p-rec-" + p.product_id;
-                card.innerHTML = `
-                    <div class="flip-inner">
-                        <div class="front-face" onclick="document.getElementById('p-rec-${p.product_id}').classList.toggle('is-flipped')">
-                            <div class="img-box">
-                                <img src="${imgSrc}" style="width:100%;height:100%;object-fit:cover;">
-                            </div>
-                            <p class="label-cat">AI Suggestion (${p.category})</p>
-                            <h2 class="label-name">${p.name}</h2>
-                            <div class="input-row" onclick="event.stopPropagation()">
-                                <div class="qty-box">
-                                    <button onclick="qtyChangeRec(${p.product_id},-1)">-</button>
-                                    <span id="qval-rec-${p.product_id}">1</span>
-                                    <button onclick="qtyChangeRec(${p.product_id},1)">+</button>
-                                </div>
-                            </div>
-                            <p class="label-price">Product Amount: ₱${p.price}</p>
-                            <div class="btn-row" onclick="event.stopPropagation()">
-                                <button class="cart-act" onclick="addCartRec(${p.product_id},${p.price})">CART</button>
-                                <button class="buy-act" onclick="buyNowRec(${p.product_id})">BUY</button>
-                            </div>
-                        </div>
-                        <div class="back-face" onclick="document.getElementById('p-rec-${p.product_id}').classList.toggle('is-flipped')">
-                            <h3>${p.name}</h3>
-                            <p style="font-size:12px; margin-top:10px;">Description</p>
-                            <p style="font-size:10px; opacity:0.8; margin-top:5px;">${p.description || 'No description available.'}</p>
-                        </div>
-                    </div>
-                `;
-                grid.appendChild(card);
             });
+
+            // Render using unified render function with AI flag
+            render(recommendations, true);
             
             container.style.display = 'block';
             updateRecommendationStatus('Recommendations ready.');
@@ -561,57 +581,6 @@ function updateRecommendationStatus(message) {
     if (statusEl) {
         statusEl.innerText = message;
     }
-}
-
-function qtyChangeRec(id, d) {
-    var el = document.getElementById("qval-rec-" + id);
-    var v = parseInt(el.innerText) + d;
-    if (v >= 1) el.innerText = v;
-}
-
-function addCartRec(id, pr) {
-    var q = parseInt(document.getElementById("qval-rec-" + id).innerText);
-    var product = data.find(p => p.product_id === id);
-
-    var unit = "1 pc";
-    var multiplier = 1;
-
-    updateCartCount();
-
-   
-
-    var bottomBar = document.querySelector('.bottom-bar');
-    if (bottomBar) bottomBar.style.display = 'flex';
-
-   
-
-    var btnQtyEl = document.getElementById('btnQty');
-    
-
-    var subTotalEl = document.getElementById('displaySubtotal') || document.getElementById('subTotal');
-    updateSubtotal();
-
-
-    var cart = JSON.parse(localStorage.getItem('cart')) || [];
-    var existing = cart.find(item => item.product_id === id);
-    if (existing) {
-        existing.qty += q;
-    } else {
-        cart.push({
-            product_id: product.product_id,
-            name: product.name,
-            basePrice: pr,
-            qty: q,
-            unit: unit,
-            multiplier: multiplier,
-            image: product.image_filename,
-            image_filename: product.image_filename
-        });
-    }
-    localStorage.setItem('cart', JSON.stringify(cart));
-    updateRecommendationStatus("Cart updated. Click Generate AI Recommendations.");
-
-    alert(product.name + " added to cart!");
 }
 
 document.addEventListener('DOMContentLoaded', () => {
