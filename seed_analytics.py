@@ -28,9 +28,9 @@ def seed_analytics():
     user_ids = []
     for name, email, phone in fake_users:
         db.execute('''
-            INSERT INTO users (username, name, email, contact_no, is_verified) 
-            VALUES (?, ?, ?, ?, 1)
-        ''', (name.split()[0].lower(), name, email, phone))
+            INSERT INTO users (name, email, contact_no) 
+            VALUES (?, ?, ?)
+        ''', (name, email, phone))
         user_ids.append(db.lastrowid)
 
     # 3. Time Travel: Generate 60 days of orders
@@ -68,8 +68,8 @@ def seed_analytics():
                 line_total = base_price * qty
                 total_amount += line_total
                 
-                # Format: product_id, quantity, price, price_at_time, base_price_at_time
-                order_items_data.append((product_id, qty, base_price, base_price, base_price))
+                # Format: product_id, quantity, price_at_time, base_price_at_time
+                order_items_data.append((product_id, qty, base_price, base_price))
 
             # Add a slight chance of a discount (10% off) for realism
             discount = 0
@@ -85,17 +85,17 @@ def seed_analytics():
 
             # Insert Order
             db.execute('''
-                INSERT INTO orders (order_no, user_id, total_amount, total_price, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (order_no, user_id, total_amount, final_total, status, created_at))
+                INSERT INTO orders (order_no, user_id, total_price, status, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (order_no, user_id, final_total, status, created_at))
             order_id = db.lastrowid
 
             # Insert Order Items
             for item in order_items_data:
                 db.execute('''
-                    INSERT INTO order_items (order_id, product_id, quantity, price, price_at_time, base_price_at_time)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (order_id, item[0], item[1], item[2], item[3], item[4]))
+                    INSERT INTO order_items (order_id, product_id, quantity, price_at_time, base_price_at_time)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (order_id, item[0], item[1], item[2], item[3]))
             
             total_orders_created += 1
 

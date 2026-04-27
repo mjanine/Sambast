@@ -1,8 +1,39 @@
 let editMode = false;
 let allSelected = false;
 
-let cart = JSON.parse(localStorage.getItem('cart')) || [];
+function canonicalizeUnitValue(unitValue) {
+    const raw = String(unitValue || '').trim().toLowerCase();
+    if (!raw) return '1 pc';
+    if (['pc', 'pcs', 'piece', 'pieces'].includes(raw)) return '1 pc';
+    return String(unitValue || '').trim();
+}
+
+let cart = (JSON.parse(localStorage.getItem('cart')) || []).map(item => {
+    if (!item) return item;
+    return {
+        ...item,
+        unit: canonicalizeUnitValue(item.unit),
+        selected: !!item.selected
+    };
+});
+
 let selectedItems = new Set();
+
+function rebuildSelectedItems() {
+    selectedItems = new Set();
+    cart.forEach(item => {
+        if (item && item.selected) {
+            selectedItems.add(item.product_id + "_" + item.unit);
+        }
+    });
+}
+
+function persistCartState() {
+    localStorage.setItem('cart', JSON.stringify(cart));
+}
+
+rebuildSelectedItems();
+persistCartState();
 
 function normalizeUnitOptions(options) {
     if (!Array.isArray(options)) return [];
@@ -190,7 +221,7 @@ function setQty(index, value) {
 
     cart[index].qty = qty;
 
-    localStorage.setItem('cart', JSON.stringify(cart));
+    persistCartState();
 
     renderCart();
     calculateTotal();
@@ -205,11 +236,12 @@ function updateQty(index, delta) {
     cart[index].qty = (cart[index].qty || 1) + delta;
 
     if (cart[index].qty < 1) {
+        const removedId = cart[index].product_id + "_" + cart[index].unit;
         cart.splice(index, 1);
-        selectedItems.clear();
+        selectedItems.delete(removedId);
     }
 
-    localStorage.setItem('cart', JSON.stringify(cart));
+    persistCartState();
 
     renderCart();
     calculateTotal();
@@ -221,10 +253,18 @@ function toggleSelectAll(checkbox) {
 
     if (checkbox.checked) {
         cart.forEach(item => {
+            if (!item) return;
+            item.selected = true;
             selectedItems.add(item.product_id + "_" + item.unit);
+        });
+    } else {
+        cart.forEach(item => {
+            if (!item) return;
+            item.selected = false;
         });
     }
 
+    persistCartState();
     renderCart();
     calculateTotal();
     syncSelectAllCheckbox();
@@ -237,10 +277,13 @@ function toggleSelect(index) {
 
     if (selectedItems.has(id)) {
         selectedItems.delete(id);
+        cart[index].selected = false;
     } else {
         selectedItems.add(id);
+        cart[index].selected = true;
     }
 
+    persistCartState();
     calculateTotal();
     syncSelectAllCheckbox(); // 🔥 ADD THIS
 }
@@ -329,6 +372,7 @@ document.querySelector('.checkout-btn').addEventListener('click', () => {
     }
 
     localStorage.setItem('checkoutItems', JSON.stringify(selectedData));
+    localStorage.setItem('checkoutSelectedIds', JSON.stringify(Array.from(selectedItems)));
     window.location.href = '/checkout';
 
 });
@@ -457,12 +501,13 @@ function updateUnit(index) {
     const select = document.querySelectorAll('.size-dropdown')[index];
     const option = select.options[select.selectedIndex];
 
-    const newUnit = option.value;
+    const newUnit = canonicalizeUnitValue(option.value);
     const newMultiplier = getOptionMultiplier(option);
 
     const currentItem = cart[index];
 
     const oldId = currentItem.product_id + "_" + currentItem.unit;
+    const wasSelected = !!currentItem.selected;
 
     currentItem.unit = newUnit;
     currentItem.multiplier = newMultiplier;
@@ -473,7 +518,6 @@ function updateUnit(index) {
     // 🔥 FIX: update selection key
     if (selectedItems.has(oldId)) {
         selectedItems.delete(oldId);
-        selectedItems.add(newId);
     }
 
     // merge duplicates
@@ -484,50 +528,34 @@ function updateUnit(index) {
     );
 
     if (duplicateIndex !== -1) {
+        const duplicateItem = cart[duplicateIndex];
+        const duplicateId = duplicateItem.product_id + "_" + duplicateItem.unit;
+        const mergedSelected = wasSelected || !!duplicateItem.selected;
+
         cart[duplicateIndex].qty += currentItem.qty;
+        cart[duplicateIndex].selected = mergedSelected;
         cart.splice(index, 1);
 
-        selectedItems.clear(); // safer reset after merge
+        selectedItems.delete(duplicateId);
+        if (mergedSelected) {
+            selectedItems.add(duplicateId);
+        }
     }
 
-    localStorage.setItem('cart', JSON.stringify(cart));
+    if (duplicateIndex === -1) {
+        currentItem.selected = wasSelected;
+        if (wasSelected) {
+            selectedItems.add(newId);
+        }
+    }
+
+    persistCartState();
 
     renderCart();
     calculateTotal();
 }
 
 
-function toggleEditMode() {
-    editMode = !editMode;
-
-    const editBtn = document.getElementById("editBtn");
-    const normalFooter = document.getElementById("normalFooter");
-    const checkoutBtn = document.getElementById("checkoutBtn");
-    const editFooter = document.getElementById("editFooter");
-    const footer = document.querySelector(".cart-footer");
-
-    if (editMode) {
-        editBtn.innerText = "Done";
-
-        normalFooter.style.display = "none";
-        checkoutBtn.style.display = "none";
-        editFooter.style.display = "flex";
-
-        footer.classList.add("edit-mode");
-    } else {
-        editBtn.innerText = "Edit";
-
-        normalFooter.style.display = "flex";
-        checkoutBtn.style.display = "block";
-        editFooter.style.display = "none";
-
-        footer.classList.remove("edit-mode");
-
-        selectedItems.clear();
-        renderCart();
-        calculateTotal();
-    }
-}
 /* =========================
    EDIT MODE SYSTEM (SAFE)
 ========================= */
@@ -564,7 +592,12 @@ function toggleEditMode() {
 
 function selectAllItems() {
     selectedItems.clear();
-    cart.forEach(item => selectedItems.add(item.product_id + "_" + item.unit));
+    cart.forEach(item => {
+        if (!item) return;
+        item.selected = true;
+        selectedItems.add(item.product_id + "_" + item.unit);
+    });
+    persistCartState();
     renderCart();
     calculateTotal();
 }
@@ -572,6 +605,11 @@ function selectAllItems() {
 
 function deselectAllItems() {
     selectedItems.clear();
+    cart.forEach(item => {
+        if (!item) return;
+        item.selected = false;
+    });
+    persistCartState();
     renderCart();
     calculateTotal();
 }
@@ -585,8 +623,13 @@ function removeSelected() {
 
     cart = cart.filter(item => !selectedItems.has(item.product_id + "_" + item.unit));
 
+    cart = cart.map(item => ({
+        ...item,
+        selected: false
+    }));
+
     selectedItems.clear();
-    localStorage.setItem('cart', JSON.stringify(cart));
+    persistCartState();
 
     renderCart();
     calculateTotal();

@@ -5,7 +5,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (orderNumDisplay) orderNumDisplay.innerText = "Generating...";
 
-    let checkoutItems = JSON.parse(localStorage.getItem('checkoutItems')) || [];
+    function canonicalizeUnitValue(unitValue) {
+        const raw = String(unitValue || '').trim().toLowerCase();
+        if (!raw) return '1 pc';
+        if (['pc', 'pcs', 'piece', 'pieces'].includes(raw)) return '1 pc';
+        return String(unitValue || '').trim();
+    }
+
+    function cartItemId(item) {
+        if (!item) return '';
+        return String(item.product_id) + "_" + canonicalizeUnitValue(item.unit);
+    }
+
+    function removeCheckedItemsFromCart() {
+        const storedCart = JSON.parse(localStorage.getItem('cart')) || [];
+        const selectedIds = JSON.parse(localStorage.getItem('checkoutSelectedIds')) || [];
+
+        let ids = Array.isArray(selectedIds) ? selectedIds : [];
+        if (ids.length === 0) {
+            ids = checkoutItems.map(cartItemId).filter(Boolean);
+        }
+
+        const idSet = new Set(ids);
+        const updatedCart = storedCart.filter(item => !idSet.has(cartItemId(item)));
+
+        localStorage.setItem('cart', JSON.stringify(updatedCart));
+        localStorage.removeItem('checkoutSelectedIds');
+    }
+
+    let checkoutItems = (JSON.parse(localStorage.getItem('checkoutItems')) || []).map(item => {
+        if (!item) return item;
+        return {
+            ...item,
+            unit: canonicalizeUnitValue(item.unit)
+        };
+    });
+    localStorage.setItem('checkoutItems', JSON.stringify(checkoutItems));
     let currentTotal = 0;
     let currentSubtotal = 0;
     let currentDiscount = 0;
@@ -206,7 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!Number.isFinite(itemIndex) || !checkoutItems[itemIndex]) return;
 
         const selectedOption = selectElement.options[selectElement.selectedIndex];
-        const selectedUnit = String(selectedOption.value || '').trim();
+        const selectedUnit = canonicalizeUnitValue(selectedOption.value);
         const selectedMultiplier = Number(selectedOption.getAttribute('data-multiplier') || 1);
 
         checkoutItems[itemIndex].unit = selectedUnit || checkoutItems[itemIndex].unit;
@@ -243,7 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 🔥 THIS IS THE FIX
     basePrice: item.basePrice ?? item.price,
     multiplier: item.multiplier ?? 1,
-    unit: item.unit ?? "1 pc"
+    unit: canonicalizeUnitValue(item.unit) || "1 pc"
 })),
     payment_method: paymentMethod
 })
@@ -258,9 +293,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     localStorage.setItem('lastOrderTotal', String(currentTotal || 0));
                     localStorage.setItem('lastOrderNo', data.order_no);
 
-                    // Clean up cart
+                    // Clean up checkout state and remove only selected items from cart
                     localStorage.removeItem('checkoutItems');
-                    localStorage.removeItem('cart');
+                    removeCheckedItemsFromCart();
 
                     showNotification("Success", "Order placed successfully");
 setTimeout(() => {

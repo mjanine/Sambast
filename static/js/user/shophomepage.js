@@ -39,6 +39,13 @@ function getOptionMultiplier(option) {
     return 1;
 }
 
+function canonicalizeUnitValue(unitValue) {
+    const raw = String(unitValue || '').trim().toLowerCase();
+    if (!raw) return '1 pc';
+    if (['pc', 'pcs', 'piece', 'pieces'].includes(raw)) return '1 pc';
+    return String(unitValue || '').trim();
+}
+
 function getUnitOptions(product) {
     if (!product) return [{ label: "1 pc", value: "1 pc", multiplier: 1 }];
 
@@ -347,7 +354,7 @@ function addCart(id, pr) {
     var unitSelect = document.getElementById("unit-" + id);
     var selectedOption = unitSelect.options[unitSelect.selectedIndex];
 
-    var unit = selectedOption.value;
+    var unit = canonicalizeUnitValue(selectedOption.value);
     var multiplier = getOptionMultiplier(selectedOption);
 
     var product = data.find(p => p.product_id === id);
@@ -400,7 +407,7 @@ function buyNow(id) {
     var unitSelect = document.getElementById("unit-" + id);
     var selectedOption = unitSelect.options[unitSelect.selectedIndex];
 
-    var unit = selectedOption.value;
+    var unit = canonicalizeUnitValue(selectedOption.value);
     var multiplier = getOptionMultiplier(selectedOption);
     const pricing = computePricing(product, multiplier, unit, q);
 

@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('createAccountForm');
-const contactInput = document.getElementById('contactNo');
+    const emailInput = document.getElementById('email');
+    const contactInput = document.getElementById('contactNo');
 
 // allow numbers only + limit to 11 digits
 contactInput.addEventListener('input', () => {
@@ -13,17 +14,29 @@ contactInput.addEventListener('input', () => {
         e.preventDefault();
 
         const fullName = document.getElementById('fullName').value.trim();
+        const email = emailInput.value.trim().toLowerCase();
         const contactNo = document.getElementById('contactNo').value.trim();
 
         // EMPTY FIELDS
-        if (!fullName || !contactNo) {
+        if (!fullName || !email || !contactNo) {
             showErrorModal('Please fill in all fields.');
+            return;
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            showErrorModal('Please enter a valid email address.');
+            return;
+        }
+
+        if (!/^\d{11}$/.test(contactNo)) {
+            showErrorModal('Contact number must be exactly 11 digits.');
             return;
         }
 
         const submitButton = form.querySelector('button[type="submit"]');
         submitButton.disabled = true;
-        submitButton.textContent = 'Creating...';
+        submitButton.textContent = 'Sending Code...';
 
         fetch('/register', {
             method: 'POST',
@@ -32,6 +45,7 @@ contactInput.addEventListener('input', () => {
             },
             body: JSON.stringify({
                 full_name: fullName,
+                email,
                 contact_no: contactNo
             })
         })

@@ -551,13 +551,15 @@ async function loadStats() {
 
         const totalRevenueEl = document.getElementById("total-revenue");
         const totalOrdersEl = document.getElementById("total-orders");
+        const activeOrdersEl = document.getElementById("active-orders");
         const avgOrderValueEl = document.getElementById("avg-order-value");
         const statusSummary = document.getElementById("status-summary");
 
         if (totalRevenueEl) totalRevenueEl.innerText = stats.revenue || toCurrency(0);
         if (totalOrdersEl) totalOrdersEl.innerText = stats.order_count ?? 0;
+        if (activeOrdersEl) activeOrdersEl.innerText = stats.active_order_count ?? 0;
         if (avgOrderValueEl) avgOrderValueEl.innerText = stats.avg_value || toCurrency(0);
-        if (statusSummary) statusSummary.innerText = `${stats.order_count ?? 0} active orders in system.`;
+        if (statusSummary) statusSummary.innerText = `${stats.active_order_count ?? 0} active orders in system.`;
 
         renderLowStockList(stats);
     } catch (error) {
@@ -597,10 +599,27 @@ async function loadTopProductsChart() {
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
                 scales: {
-                    y: {
+                    x: {
                         beginAtZero: true
+                    },
+                    y: {
+                        ticks: {
+                            callback: function(value) {
+                                const label = this.getLabelForValue(value);
+                                if (typeof label === 'string' && label.length > 12) {
+                                    return label.substring(0, 12) + '...';
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
                     }
                 }
             }

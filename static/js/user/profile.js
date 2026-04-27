@@ -1,5 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const editBtn = document.getElementById('editContactBtn');
+    const saveAccountInfoBtn = document.getElementById('saveAccountInfoBtn');
+    const profileContactInput = document.getElementById('profileContact');
+    const profileEmailInput = document.getElementById('profileEmail');
     const petProfileForm = document.getElementById('petProfileForm');
     const petSelector = document.getElementById('petSelector');
     const addPetBtn = document.getElementById('addPetBtn');
@@ -98,10 +100,59 @@ function hideNotification() {
         }
     };
 
-    if (editBtn) {
-        editBtn.addEventListener('click', () => {
-            // Route through Flask endpoint instead of a file path URL
-            window.location.href = '/verify-code';
+    if (profileContactInput) {
+        profileContactInput.addEventListener('input', () => {
+            profileContactInput.value = profileContactInput.value.replace(/\D/g, '').slice(0, 11);
+        });
+    }
+
+    if (saveAccountInfoBtn) {
+        saveAccountInfoBtn.addEventListener('click', async () => {
+            const contactNo = (profileContactInput?.value || '').trim();
+            const email = (profileEmailInput?.value || '').trim().toLowerCase();
+
+            if (!/^\d{11}$/.test(contactNo)) {
+                showNotification("Error", "Contact number must be exactly 11 digits.");
+                return;
+            }
+
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                showNotification("Error", "Please enter a valid email address.");
+                return;
+            }
+
+            const originalText = saveAccountInfoBtn.textContent;
+            saveAccountInfoBtn.disabled = true;
+            saveAccountInfoBtn.textContent = 'Saving...';
+
+            try {
+                const response = await fetch('/api/user/profile', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        contact_no: contactNo,
+                        email
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showNotification("Error", data.error || "Failed to update profile.");
+                    return;
+                }
+
+                showNotification("Success!", data.message || "Profile updated successfully!");
+            } catch (error) {
+                console.error('Error updating profile:', error);
+                showNotification("Error", "A network error occurred while saving profile info.");
+            } finally {
+                saveAccountInfoBtn.disabled = false;
+                saveAccountInfoBtn.textContent = originalText;
+            }
         });
     }
 
