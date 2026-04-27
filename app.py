@@ -3547,24 +3547,57 @@ def inventory_forecast():
         else:
             season = "Rainy Season"
 
-        query = """
-            SELECT p.name, p.stock_status, IFNULL(SUM(oi.quantity), 0) as total_sold, GROUP_CONCAT(o.created_at) as purchase_timestamps
+        # 1. Get current stock and last 30 days sales
+        query_30d = """
+            SELECT 
+                p.product_id,
+                p.name, 
+                p.stock_status, 
+                IFNULL(SUM(oi.quantity), 0) as sold_30d
             FROM products p
             LEFT JOIN order_items oi ON p.product_id = oi.product_id
-            LEFT JOIN orders o ON oi.order_id = o.order_id
+            LEFT JOIN orders o ON oi.order_id = o.order_id 
+                AND o.created_at >= date('now', '-30 days')
+                AND o.status != 'Cancelled'
             WHERE IFNULL(p.is_archived, 0) = 0
             GROUP BY p.product_id
         """
-        items = db.execute(query).fetchall()
-        
+        items_30d = db.execute(query_30d).fetchall()
+
+        # 2. Get 12-month historical monthly trends for seasonality
+        query_history = """
+            SELECT 
+                p.product_id,
+                strftime('%Y-%m', o.created_at) as sales_month,
+                SUM(oi.quantity) as monthly_sold
+            FROM products p
+            JOIN order_items oi ON p.product_id = oi.product_id
+            JOIN orders o ON oi.order_id = o.order_id
+            WHERE IFNULL(p.is_archived, 0) = 0
+                AND o.status != 'Cancelled'
+                AND o.created_at >= date('now', '-12 months')
+            GROUP BY p.product_id, sales_month
+            ORDER BY sales_month ASC
+        """
+        history_rows = db.execute(query_history).fetchall()
+
+        # Group history by product
+        history_map = {}
+        for row in history_rows:
+            pid = row['product_id']
+            if pid not in history_map:
+                history_map[pid] = []
+            history_map[pid].append(f"{row['sales_month']}: {row['monthly_sold']}")
+
         inventory_data = []
-        for item in items:
-            timestamps = item['purchase_timestamps'] if item['purchase_timestamps'] else 'None'
-            inventory_data.append(f"{item['name']}: {item['stock_status']} in stock, {item['total_sold']} sold total. Timestamps: {timestamps}")
+        for item in items_30d:
+            pid = item['product_id']
+            trend_str = ", ".join(history_map.get(pid, ["No history"]))
+            inventory_data.append(f"{item['name']}: {item['stock_status']} in stock, {item['sold_30d']} sold (last 30d). Monthly Trend: {trend_str}")
         
         inventory_data_string = "\n".join(inventory_data)
 
-        prompt = f"""Today is {current_date_str}. The season is {season}. Analyze the purchase timestamps to detect seasonal patterns. Compare current stock vs predicted demand. Calculate exact numerical reorder quantities to prevent stockouts.
+        prompt = f"""Today is {current_date_str}. The season is {season}. Analyze the historical monthly sales trends to detect seasonal patterns. Compare current stock vs predicted demand. Calculate exact numerical reorder quantities to prevent stockouts.
 
 STORE DATA:
 {inventory_data_string}
