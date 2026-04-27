@@ -128,7 +128,8 @@
                  data-stock="{{ product['stock_status'] }}"
                   data-archived="{{ product['is_archived'] if 'is_archived' in product.keys() else 0 }}"
                   data-unit="{{ product['unit'] or 'pcs' }}"
-                 data-image="{{ product['image_filename'] or '' }}">
+                 data-image="{{ product['image_filename'] or '' }}"
+                 data-discount="{{ product['discount_json'] or '[]' }}">
                 <div class="card-header">
                     <strong>{{ product['name'] }}</strong>
                     <span class="icons">
@@ -287,7 +288,24 @@
                     <label>Description</label>
                     <textarea name="description" id="formDescription" placeholder="Product details..."></textarea>
 
+                    <label>Discount (dc)</label>
+                    <div class="discount-section">
+                        <div class="discount-builder-row">
+                            <select id="discountUnitSelect" style="flex: 1;">
+                                <option value="">-- Select Unit --</option>
+                            </select>
+                            <select id="discountTypeSelect" style="flex: 0.8;">
+                                <option value="percentage">% (Percentage)</option>
+                                <option value="fixed">₱ (Fixed Amount)</option>
+                            </select>
+                            <input type="number" id="discountValueInput" min="0" step="0.01" placeholder="0.00" style="flex: 0.8;">
+                            <button type="button" class="add-btn" id="addDiscountBtn" style="padding:8px 12px;">Add</button>
+                        </div>
+                        <div id="discountList" class="discount-list"></div>
+                    </div>
+
                     <input type="hidden" name="unit_options_json" id="formUnitOptionsJson" value="[]">
+                    <input type="hidden" name="discount_json" id="formDiscountJson" value="[]">
 
                     <button type="submit" class="submit-btn" id="submitBtn">Save Product</button>
                 </div>

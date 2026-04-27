@@ -957,6 +957,75 @@ body {
     flex: 1;
 }
 
+/* DISCOUNT SECTION STYLES */
+.discount-section {
+    background: #f9f7f3;
+    border: 1px solid #e0d7cc;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 8px 0;
+}
+
+.discount-builder-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.discount-builder-row select,
+.discount-builder-row input {
+    padding: 8px;
+    border: 1px solid #d3cbc0;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.discount-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.discount-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f0ece5;
+    border: 1px solid #d3cbc0;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+    color: #1A323E;
+}
+
+.discount-item-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.discount-item-content strong {
+    min-width: 80px;
+    font-weight: 600;
+}
+
+.discount-remove-btn {
+    background: none;
+    border: none;
+    color: #a6171c;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.discount-remove-btn:hover {
+    background: rgba(166, 23, 28, 0.1);
+}
+
 .modal-body textarea{
     resize:none;
     height:60px;

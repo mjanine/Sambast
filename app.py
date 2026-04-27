@@ -340,6 +340,10 @@ def _run_migrations(db):
             cursor.execute("ALTER TABLE products ADD COLUMN unit_options_json TEXT DEFAULT '[]'")
             db.commit()
             print("Migration: Added unit_options_json column to products table.")
+        if product_columns and 'discount_json' not in product_columns:
+            cursor.execute("ALTER TABLE products ADD COLUMN discount_json TEXT DEFAULT '[]'")
+            db.commit()
+            print("Migration: Added discount_json column to products table.")
 
         # Migration 1c: Ensure order_items unit transaction columns exist
         cursor.execute("PRAGMA table_info(order_items)")
@@ -2135,6 +2139,56 @@ def _normalize_unit_options(raw_options):
 
     return normalized_options
 
+def _normalize_discounts(raw_discounts):
+    """
+    Normalize discount entries from raw form data.
+    Format: [{"unit": "pcs", "type": "percentage", "value": 10}, ...]
+    """
+    if isinstance(raw_discounts, str):
+        try:
+            raw_discounts = json.loads(raw_discounts or '[]')
+        except Exception:
+            return []
+
+    if not isinstance(raw_discounts, list):
+        return []
+
+    normalized_discounts = []
+    seen_units = set()
+
+    for discount in raw_discounts:
+        if not isinstance(discount, dict):
+            continue
+
+        unit = str(discount.get('unit') or '').strip()
+        discount_type = str(discount.get('type') or '').strip().lower()
+        discount_value = discount.get('value')
+
+        # Validate required fields
+        if not unit or discount_type not in ['percentage', 'fixed']:
+            continue
+
+        # Validate discount value
+        try:
+            discount_value = float(discount_value)
+            if discount_value < 0:
+                continue
+        except (TypeError, ValueError):
+            continue
+
+        # Avoid duplicates for same unit
+        if unit in seen_units:
+            continue
+
+        seen_units.add(unit)
+        normalized_discounts.append({
+            'unit': unit,
+            'type': discount_type,
+            'value': discount_value
+        })
+
+    return normalized_discounts
+
 def _get_product_unit_options(product_row):
     stored_options = _normalize_unit_options(product_row['unit_options_json']) if 'unit_options_json' in product_row.keys() else []
     if stored_options:
@@ -2471,6 +2525,7 @@ def add_product():
     price = request.form.get('price')
     description = request.form.get('description')
     unit_options_json = json.dumps(_normalize_unit_options(request.form.get('unit_options_json', '[]')))
+    discount_json = json.dumps(_normalize_discounts(request.form.get('discount_json', '[]')))
     stock_status = request.form.get('stock_status', 1)
     file = request.files.get('image')
 
@@ -2487,8 +2542,8 @@ def add_product():
     db = get_db()
     if category:
         db.execute('INSERT OR IGNORE INTO categories (name) VALUES (?)', (category,))
-    db.execute('''INSERT INTO products (name, category, unit, price, stock_status, image_filename, description, unit_options_json) 
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', (name, category, unit, price, stock_status, filename, description, unit_options_json))
+    db.execute('''INSERT INTO products (name, category, unit, price, stock_status, image_filename, description, unit_options_json, discount_json) 
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''', (name, category, unit, price, stock_status, filename, description, unit_options_json, discount_json))
     action_text = f"Added product: {name}"
     db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
                (session['admin_id'], action_text, get_log_category(action_text)))
@@ -2506,6 +2561,7 @@ def edit_product(product_id):
     price = request.form.get('price')
     description = request.form.get('description')
     unit_options_json = json.dumps(_normalize_unit_options(request.form.get('unit_options_json', '[]')))
+    discount_json = json.dumps(_normalize_discounts(request.form.get('discount_json', '[]')))
     stock_status = request.form.get('stock_status')
     remove_image = request.form.get('remove_image', '0') == '1'
 
@@ -2527,8 +2583,8 @@ def edit_product(product_id):
     elif remove_image:
         db.execute('UPDATE products SET image_filename = ? WHERE product_id = ?', ('', product_id))
 
-    db.execute('''UPDATE products SET name=?, category=?, unit=?, price=?, description=?, stock_status=?, unit_options_json=? 
-                  WHERE product_id = ?''', (name, category, unit, price, description, stock_status, unit_options_json, product_id))
+    db.execute('''UPDATE products SET name=?, category=?, unit=?, price=?, description=?, stock_status=?, unit_options_json=?, discount_json=? 
+                  WHERE product_id = ?''', (name, category, unit, price, description, stock_status, unit_options_json, discount_json, product_id))
     action_text = f"Edited product ID: {product_id}"
     db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
                (session['admin_id'], action_text, get_log_category(action_text)))

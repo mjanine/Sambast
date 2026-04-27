@@ -17,6 +17,7 @@ const stockModeSelect = document.getElementById("formStockMode");
 const formCategory = document.getElementById("formCategory");
 const categoryQuickList = document.getElementById("categoryQuickList");
 const formUnitOptionsJson = document.getElementById("formUnitOptionsJson");
+const formDiscountJson = document.getElementById("formDiscountJson");
 const categoryBuilderModal = document.getElementById("categoryBuilderModal");
 const categoryNameInput = document.getElementById("categoryNameInput");
 const categoryQtyInput = document.getElementById("categoryQtyInput");
@@ -36,6 +37,13 @@ const editCategoryUnitInput = document.getElementById("editCategoryUnitInput");
 const editCategoryAddOptionBtn = document.getElementById("editCategoryAddOptionBtn");
 const editCategoryOptionList = document.getElementById("editCategoryOptionList");
 
+// Discount Elements
+const discountUnitSelect = document.getElementById("discountUnitSelect");
+const discountTypeSelect = document.getElementById("discountTypeSelect");
+const discountValueInput = document.getElementById("discountValueInput");
+const addDiscountBtn = document.getElementById("addDiscountBtn");
+const discountList = document.getElementById("discountList");
+
 const searchInput = document.getElementById("inventorySearch");
 const inventoryContainer = document.getElementById("inventoryContainer");
 const inventoryCards = Array.from(document.querySelectorAll(".inventory-card"));
@@ -45,6 +53,7 @@ const CATEGORY_STORAGE_KEY = "inventory_category_state_v1";
 const categoryOptionsByName = {};
 let currentBuilderOptions = [];
 let currentEditOptions = [];
+let currentDiscounts = [];
 let editingCategoryName = "";
 let activeInventoryCategory = "all";
 
@@ -546,13 +555,19 @@ if (addProductBtn) {
             formCategory.value = formCategory.options[0].value;
         }
         
+        // Initialize discount section
+        currentDiscounts = [];
+        renderDiscountList();
+        syncDiscountField();
+        populateDiscountUnitSelect();
+        
         addProductModal.classList.add("show");
         overlay.classList.add("show");
     }
 }
 
 // --- MODAL LOGIC (OPEN EDIT) ---
-window.openEditModal = function(id, name, price, category, desc, stock, unit, imageFilename) {
+window.openEditModal = function(id, name, price, category, desc, stock, unit, imageFilename, discountJsonStr) {
     document.getElementById("modalTitle").innerText = "Edit Product";
     productForm.action = `/admin/products/edit/${id}`; // Set to Edit route
     
@@ -585,6 +600,22 @@ window.openEditModal = function(id, name, price, category, desc, stock, unit, im
     }
 
     syncProductUnitOptionsField();
+    
+    // Initialize and load discount section
+    currentDiscounts = [];
+    try {
+        if (discountJsonStr) {
+            const discountData = typeof discountJsonStr === 'string' ? JSON.parse(discountJsonStr) : discountJsonStr;
+            if (Array.isArray(discountData)) {
+                currentDiscounts = discountData;
+            }
+        }
+    } catch (e) {
+        console.error('Error parsing discount data:', e);
+    }
+    renderDiscountList();
+    syncDiscountField();
+    populateDiscountUnitSelect();
 
     if (removeImageFlag) removeImageFlag.value = "0";
     if (imageFilename) {
@@ -611,8 +642,9 @@ window.openEditModalFromCard = function(button) {
     const stock = card.getAttribute("data-stock") || "";
     const unit = card.getAttribute("data-unit") || "pcs";
     const imageFilename = card.getAttribute("data-image") || "";
+    const discountJson = card.getAttribute("data-discount") || "[]";
 
-    openEditModal(id, name, price, category, desc, stock, unit, imageFilename);
+    openEditModal(id, name, price, category, desc, stock, unit, imageFilename, discountJson);
 }
 
 // --- CLOSE LOGIC ---
@@ -792,10 +824,137 @@ if (saveEditCategoryBtn) {
 if (productForm) {
     productForm.addEventListener("submit", function(e) {
         syncProductUnitOptionsField();
+        syncDiscountField();
         if (formCategory && formCategory.value === "__add_new__") {
             e.preventDefault();
             showCategoryBuilder();
         }
+    });
+}
+
+// --- DISCOUNT BUILDER FUNCTIONS ---
+function populateDiscountUnitSelect() {
+    if (!discountUnitSelect || !formUnitOptionsJson) return;
+    
+    try {
+        const options = JSON.parse(formUnitOptionsJson.value || '[]');
+        const previousValue = discountUnitSelect.value;
+        
+        discountUnitSelect.innerHTML = '<option value="">-- Select Unit --</option>';
+        
+        if (Array.isArray(options) && options.length > 0) {
+            options.forEach(option => {
+                const label = option && option.label ? String(option.label).trim() : '';
+                if (label) {
+                    const opt = document.createElement('option');
+                    opt.value = label;
+                    opt.textContent = label;
+                    discountUnitSelect.appendChild(opt);
+                }
+            });
+        }
+        
+        // Restore previous value if it still exists
+        if (previousValue && Array.from(discountUnitSelect.options).some(o => o.value === previousValue)) {
+            discountUnitSelect.value = previousValue;
+        }
+    } catch (e) {
+        console.error('Error parsing unit options:', e);
+    }
+}
+
+function renderDiscountList() {
+    if (!discountList) return;
+    
+    discountList.innerHTML = '';
+    
+    if (!Array.isArray(currentDiscounts) || currentDiscounts.length === 0) {
+        return;
+    }
+    
+    currentDiscounts.forEach((discount, index) => {
+        const discountItem = document.createElement('div');
+        discountItem.className = 'discount-item';
+        
+        const unit = String(discount.unit || '').trim();
+        const type = String(discount.type || 'percentage').toLowerCase();
+        const value = parseFloat(discount.value || 0);
+        
+        const displayValue = type === 'percentage' 
+            ? `${value}%` 
+            : `₱${value.toFixed(2)}`;
+        
+        discountItem.innerHTML = `
+            <div class="discount-item-content">
+                <strong>${unit}</strong>: ${displayValue}
+            </div>
+            <button type="button" class="discount-remove-btn" data-index="${index}">✕</button>
+        `;
+        
+        const removeBtn = discountItem.querySelector('.discount-remove-btn');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                currentDiscounts.splice(index, 1);
+                renderDiscountList();
+                syncDiscountField();
+            });
+        }
+        
+        discountList.appendChild(discountItem);
+    });
+}
+
+function syncDiscountField() {
+    if (!formDiscountJson) return;
+    
+    formDiscountJson.value = JSON.stringify(currentDiscounts);
+}
+
+// Add discount button handler
+if (addDiscountBtn) {
+    addDiscountBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        const unit = discountUnitSelect ? String(discountUnitSelect.value || '').trim() : '';
+        const type = discountTypeSelect ? String(discountTypeSelect.value || 'percentage').toLowerCase() : 'percentage';
+        const value = discountValueInput ? parseFloat(discountValueInput.value || 0) : 0;
+        
+        if (!unit) {
+            alert('Please select a unit');
+            return;
+        }
+        
+        if (value <= 0) {
+            alert('Please enter a valid discount value');
+            return;
+        }
+        
+        // Check for duplicate unit
+        const exists = currentDiscounts.some(d => d.unit === unit);
+        if (exists) {
+            alert(`Discount for "${unit}" already exists`);
+            return;
+        }
+        
+        currentDiscounts.push({
+            unit,
+            type,
+            value
+        });
+        
+        renderDiscountList();
+        syncDiscountField();
+        
+        // Reset inputs
+        if (discountValueInput) discountValueInput.value = '';
+    });
+}
+
+// Update discount unit dropdown when unit options change
+if (formCategory) {
+    formCategory.addEventListener('change', function() {
+        populateDiscountUnitSelect();
     });
 }
 
