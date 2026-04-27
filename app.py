@@ -360,6 +360,10 @@ def _run_migrations(db):
             cursor.execute("ALTER TABLE order_items ADD COLUMN base_price_at_time REAL")
             db.commit()
             print("Migration: Added base_price_at_time column to order_items table.")
+        if order_item_columns and 'discount_amount_at_time' not in order_item_columns:
+            cursor.execute("ALTER TABLE order_items ADD COLUMN discount_amount_at_time REAL DEFAULT 0")
+            db.commit()
+            print("Migration: Added discount_amount_at_time column to order_items table.")
 
         # Migration 1f: Ensure orders.cancellation_reason exists for cancel feedback loop
         cursor.execute("PRAGMA table_info(orders)")
@@ -381,9 +385,16 @@ def _run_migrations(db):
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE NOT NULL
+                name TEXT UNIQUE NOT NULL,
+                unit_options_json TEXT DEFAULT '[]'
             )
         ''')
+        cursor.execute("PRAGMA table_info(categories)")
+        category_columns = [column[1] for column in cursor.fetchall()]
+        if category_columns and 'unit_options_json' not in category_columns:
+            cursor.execute("ALTER TABLE categories ADD COLUMN unit_options_json TEXT DEFAULT '[]'")
+            db.commit()
+            print("Migration: Added unit_options_json column to categories table.")
         cursor.execute("SELECT DISTINCT TRIM(category) AS category_name FROM products WHERE category IS NOT NULL AND TRIM(category) != ''")
         existing_categories = cursor.fetchall()
         for row in existing_categories:
@@ -455,12 +466,14 @@ def init_db():
             image_filename TEXT, 
             description TEXT,
             unit_options_json TEXT DEFAULT '[]',
+            discount_json TEXT DEFAULT '[]',
             is_archived INTEGER DEFAULT 0,
             archived_at TIMESTAMP)''')
 
         cursor.execute('''CREATE TABLE IF NOT EXISTS categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL
+            name TEXT UNIQUE NOT NULL,
+            unit_options_json TEXT DEFAULT '[]'
         )''')
         
         cursor.execute('''CREATE TABLE IF NOT EXISTS orders (
@@ -482,6 +495,7 @@ def init_db():
             selected_unit TEXT DEFAULT '1 pc',
             unit_multiplier REAL DEFAULT 1,
             base_price_at_time REAL,
+            discount_amount_at_time REAL DEFAULT 0,
             FOREIGN KEY (order_id) REFERENCES orders (order_id), 
             FOREIGN KEY (product_id) REFERENCES products (product_id))''')
         
@@ -1820,6 +1834,7 @@ VET_DISCLAIMER = "I am an AI, not a veterinarian. Please consult a vet for medic
 
 def _product_row_to_dict(product_row):
     unit_options = _get_product_unit_options(product_row)
+    discounts = _normalize_discounts(product_row['discount_json']) if 'discount_json' in product_row.keys() else []
     return {
         'product_id': product_row['product_id'],
         'name': product_row['name'],
@@ -1829,7 +1844,8 @@ def _product_row_to_dict(product_row):
         'description': product_row['description'],
         'image_filename': product_row['image_filename'],
         'stock_status': product_row['stock_status'],
-        'unit_options': unit_options
+        'unit_options': unit_options,
+        'discounts': discounts
     }
 
 def _normalize_recommendation_names(candidate):
@@ -2189,6 +2205,85 @@ def _normalize_discounts(raw_discounts):
 
     return normalized_discounts
 
+def _default_category_unit_options(category_name):
+    category = str(category_name or '').strip().lower()
+    if 'feed' in category:
+        return _normalize_unit_options([
+            {'label': '0.5 kg', 'value': '0.5 kg', 'multiplier': 0.5},
+            {'label': '1 kg', 'value': '1 kg', 'multiplier': 1},
+            {'label': '1 pc', 'value': '1 pc', 'multiplier': 1}
+        ])
+    if 'medicine' in category:
+        return _normalize_unit_options([
+            {'label': '1 pc', 'value': '1 pc', 'multiplier': 1},
+            {'label': '10 pcs', 'value': '10 pcs', 'multiplier': 10}
+        ])
+    if 'suppl' in category:
+        return _normalize_unit_options([
+            {'label': '1 pc', 'value': '1 pc', 'multiplier': 1},
+            {'label': '3 pcs', 'value': '3 pcs', 'multiplier': 3}
+        ])
+    return _normalize_unit_options([
+        {'label': '1 pc', 'value': '1 pc', 'multiplier': 1}
+    ])
+
+def _get_category_unit_options(db, category_name):
+    normalized_name = str(category_name or '').strip()
+    if not normalized_name:
+        return []
+
+    row = db.execute(
+        'SELECT unit_options_json FROM categories WHERE LOWER(name) = LOWER(?)',
+        (normalized_name,)
+    ).fetchone()
+    if not row:
+        return []
+
+    stored = _normalize_unit_options(row['unit_options_json'])
+    if stored:
+        return stored
+
+    return _default_category_unit_options(normalized_name)
+
+def _find_discount_for_unit(discounts, selected_unit):
+    selected_key = _normalize_unit_key(selected_unit)
+    if not selected_key:
+        return None
+
+    for discount in discounts:
+        unit_key = _normalize_unit_key(discount.get('unit'))
+        if unit_key == selected_key:
+            return discount
+    return None
+
+def _compute_discounted_unit_price(base_price, unit_multiplier, discount_entry):
+    original_unit_price = max(0.0, float(base_price) * float(unit_multiplier))
+    if not discount_entry:
+        return {
+            'original_unit_price': original_unit_price,
+            'discount_amount_per_unit': 0.0,
+            'final_unit_price': original_unit_price
+        }
+
+    discount_type = str(discount_entry.get('type') or '').strip().lower()
+    discount_value = float(discount_entry.get('value') or 0)
+
+    if discount_type == 'percentage':
+        discount_amount = original_unit_price * (discount_value / 100.0)
+    elif discount_type == 'fixed':
+        discount_amount = discount_value
+    else:
+        discount_amount = 0.0
+
+    discount_amount = max(0.0, min(discount_amount, original_unit_price))
+    final_unit_price = max(0.0, original_unit_price - discount_amount)
+
+    return {
+        'original_unit_price': original_unit_price,
+        'discount_amount_per_unit': discount_amount,
+        'final_unit_price': final_unit_price
+    }
+
 def _get_product_unit_options(product_row):
     stored_options = _normalize_unit_options(product_row['unit_options_json']) if 'unit_options_json' in product_row.keys() else []
     if stored_options:
@@ -2483,7 +2578,12 @@ def admin_inventory():
     if 'admin_id' not in session: return redirect(url_for('admin_login_page'))
     db = get_db()
     products = db.execute('SELECT * FROM products ORDER BY IFNULL(is_archived, 0) ASC, name ASC').fetchall()
-    categories = db.execute('SELECT id, name FROM categories ORDER BY name ASC').fetchall()
+    raw_categories = db.execute('SELECT id, name, unit_options_json FROM categories ORDER BY name ASC').fetchall()
+    categories = []
+    for category in raw_categories:
+        category_dict = dict(category)
+        category_dict['unit_options'] = _normalize_unit_options(category['unit_options_json']) or _default_category_unit_options(category['name'])
+        categories.append(category_dict)
     return render_template('admin/inventory.html', products=products, categories=categories)
 
 @app.route('/admin/categories/add', methods=['POST'])
@@ -2499,21 +2599,89 @@ def add_category():
         return jsonify({'success': False, 'message': 'Category name cannot be empty.'}), 400
 
     db = get_db()
+    requested_options = _normalize_unit_options(payload.get('unit_options', []))
     existing = db.execute('SELECT id, name FROM categories WHERE LOWER(name) = LOWER(?)', (category_name,)).fetchone()
     if existing:
+        effective_options = requested_options or _get_category_unit_options(db, existing['name'])
+        if requested_options:
+            db.execute(
+                'UPDATE categories SET unit_options_json = ? WHERE id = ?',
+                (json.dumps(requested_options), existing['id'])
+            )
+            db.commit()
         return jsonify({
             'success': True,
-            'category': {'id': existing['id'], 'name': existing['name']},
+            'category': {
+                'id': existing['id'],
+                'name': existing['name'],
+                'unit_options': effective_options
+            },
             'message': 'Category already exists.'
         }), 200
 
-    cursor = db.execute('INSERT INTO categories (name) VALUES (?)', (category_name,))
+    options_to_store = requested_options or _default_category_unit_options(category_name)
+    cursor = db.execute(
+        'INSERT INTO categories (name, unit_options_json) VALUES (?, ?)',
+        (category_name, json.dumps(options_to_store))
+    )
     db.commit()
     return jsonify({
         'success': True,
-        'category': {'id': cursor.lastrowid, 'name': category_name},
+        'category': {
+            'id': cursor.lastrowid,
+            'name': category_name,
+            'unit_options': options_to_store
+        },
         'message': 'Category added successfully.'
     }), 201
+
+@app.route('/admin/categories/<int:category_id>/edit', methods=['POST'])
+def edit_category(category_id):
+    if 'admin_id' not in session:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+    payload = request.get_json(silent=True) or {}
+    new_name = str(payload.get('name') or '').strip()
+    unit_options = _normalize_unit_options(payload.get('unit_options', []))
+
+    if not new_name:
+        return jsonify({'success': False, 'message': 'Category name cannot be empty.'}), 400
+
+    if not unit_options:
+        unit_options = _default_category_unit_options(new_name)
+
+    db = get_db()
+    category_row = db.execute('SELECT id, name FROM categories WHERE id = ?', (category_id,)).fetchone()
+    if not category_row:
+        return jsonify({'success': False, 'message': 'Category not found.'}), 404
+
+    conflict = db.execute(
+        'SELECT id FROM categories WHERE LOWER(name) = LOWER(?) AND id != ?',
+        (new_name, category_id)
+    ).fetchone()
+    if conflict:
+        return jsonify({'success': False, 'message': 'Category name already exists.'}), 409
+
+    old_name = category_row['name']
+    db.execute(
+        'UPDATE categories SET name = ?, unit_options_json = ? WHERE id = ?',
+        (new_name, json.dumps(unit_options), category_id)
+    )
+    db.execute(
+        'UPDATE products SET category = ? WHERE LOWER(category) = LOWER(?)',
+        (new_name, old_name)
+    )
+    db.commit()
+
+    return jsonify({
+        'success': True,
+        'category': {
+            'id': category_id,
+            'name': new_name,
+            'unit_options': unit_options
+        },
+        'message': 'Category updated successfully.'
+    }), 200
 
 @app.route('/admin/products/add', methods=['POST'])
 def add_product():
@@ -2540,8 +2708,15 @@ def add_product():
         file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
     db = get_db()
+    parsed_unit_options = _normalize_unit_options(unit_options_json)
+    if not parsed_unit_options and category:
+        parsed_unit_options = _get_category_unit_options(db, category)
+        unit_options_json = json.dumps(parsed_unit_options)
     if category:
-        db.execute('INSERT OR IGNORE INTO categories (name) VALUES (?)', (category,))
+        db.execute(
+            'INSERT OR IGNORE INTO categories (name, unit_options_json) VALUES (?, ?)',
+            (category, json.dumps(_default_category_unit_options(category)))
+        )
     db.execute('''INSERT INTO products (name, category, unit, price, stock_status, image_filename, description, unit_options_json, discount_json) 
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''', (name, category, unit, price, stock_status, filename, description, unit_options_json, discount_json))
     action_text = f"Added product: {name}"
@@ -2571,8 +2746,15 @@ def edit_product(product_id):
         stock_status = 0
     
     db = get_db()
+    parsed_unit_options = _normalize_unit_options(unit_options_json)
+    if not parsed_unit_options and category:
+        parsed_unit_options = _get_category_unit_options(db, category)
+        unit_options_json = json.dumps(parsed_unit_options)
     if category:
-        db.execute('INSERT OR IGNORE INTO categories (name) VALUES (?)', (category,))
+        db.execute(
+            'INSERT OR IGNORE INTO categories (name, unit_options_json) VALUES (?, ?)',
+            (category, json.dumps(_default_category_unit_options(category)))
+        )
     
     # Handle Image Update if provided
     file = request.files.get('image')
@@ -3751,7 +3933,8 @@ def get_products():
         'description'    : p['description'],
         'image_filename' : p['image_filename'],
         'stock_status'   : p['stock_status'],
-        'unit_options'   : _get_product_unit_options(p)
+        'unit_options'   : _get_product_unit_options(p),
+        'discounts'      : _normalize_discounts(p['discount_json']) if 'discount_json' in p.keys() else []
     } for p in products]
 
 
@@ -4018,31 +4201,15 @@ def generate_order_no():
     digits = ''.join(random.choices(string.digits, k=8))
     return f'ORD-{digits}'
 
-@app.route('/checkout')
-def checkout_page():
-    if 'user_id' not in session:
-        return redirect(url_for('sign_in_page'))
-    db = get_db()
-    user = db.execute('SELECT name, contact_no FROM users WHERE user_id = ?', (session['user_id'],)).fetchone()
-    return render_template('user/checkout.html', user=user)
-
-@app.route('/orders', methods=['POST'])
-def place_order():
-    if 'user_id' not in session:
-        return {'error': 'Unauthorized'}, 401
-
-    data           = request.get_json()
-    items          = data.get('items', [])
-    payment_method = data.get('payment_method', 'cash')
-
-    if not items:
+def _build_validated_order_items(db, items):
+    if not isinstance(items, list) or not items:
         return {'error': 'No items in order.'}, 400
 
-    db = get_db()
-
-    # Build a server-trusted item list and total using DB prices and validated units.
-    total = 0.0
+    total_original = 0.0
+    total_discount = 0.0
+    total_final = 0.0
     validated_items = []
+
     for item in items:
         product_id = item.get('product_id')
         product_name = item.get('name')
@@ -4065,12 +4232,12 @@ def place_order():
                 return {'error': 'Invalid product id provided.'}, 400
 
             product_row = db.execute(
-                'SELECT product_id, name, category, unit, price, unit_options_json FROM products WHERE product_id = ? AND IFNULL(is_archived, 0) = 0',
+                'SELECT product_id, name, category, unit, price, unit_options_json, discount_json FROM products WHERE product_id = ? AND IFNULL(is_archived, 0) = 0',
                 (product_id,)
             ).fetchone()
         elif product_name:
             product_row = db.execute(
-                'SELECT product_id, name, category, unit, price, unit_options_json FROM products WHERE name = ? AND IFNULL(is_archived, 0) = 0',
+                'SELECT product_id, name, category, unit, price, unit_options_json, discount_json FROM products WHERE name = ? AND IFNULL(is_archived, 0) = 0',
                 (product_name,)
             ).fetchone()
         else:
@@ -4095,17 +4262,79 @@ def place_order():
 
         base_price = float(product_row['price'])
         unit_multiplier = float(selected_option['multiplier'])
-        effective_unit_price = base_price * unit_multiplier
+        discounts = _normalize_discounts(product_row['discount_json']) if 'discount_json' in product_row.keys() else []
+        discount_entry = _find_discount_for_unit(discounts, selected_option['value'])
+        pricing = _compute_discounted_unit_price(base_price, unit_multiplier, discount_entry)
 
-        total += effective_unit_price * qty
+        line_original = pricing['original_unit_price'] * qty
+        line_discount = pricing['discount_amount_per_unit'] * qty
+        line_total = pricing['final_unit_price'] * qty
+
+        total_original += line_original
+        total_discount += line_discount
+        total_final += line_total
+
         validated_items.append({
             'product_id': product_row['product_id'],
+            'name': product_row['name'],
             'qty': qty,
-            'price': effective_unit_price,
             'selected_unit': selected_option['value'],
             'unit_multiplier': unit_multiplier,
-            'base_price_at_time': base_price
+            'base_price_at_time': base_price,
+            'original_unit_price': pricing['original_unit_price'],
+            'discount_amount_at_time': pricing['discount_amount_per_unit'],
+            'price': pricing['final_unit_price'],
+            'line_original': line_original,
+            'line_discount': line_discount,
+            'line_total': line_total
         })
+
+    return {
+        'items': validated_items,
+        'summary': {
+            'subtotal': round(total_original, 2),
+            'discount': round(total_discount, 2),
+            'total': round(total_final, 2)
+        }
+    }, 200
+
+@app.route('/checkout')
+def checkout_page():
+    if 'user_id' not in session:
+        return redirect(url_for('sign_in_page'))
+    db = get_db()
+    user = db.execute('SELECT name, contact_no FROM users WHERE user_id = ?', (session['user_id'],)).fetchone()
+    return render_template('user/checkout.html', user=user)
+
+@app.route('/orders/quote', methods=['POST'])
+def order_quote():
+    if 'user_id' not in session:
+        return {'error': 'Unauthorized'}, 401
+
+    data = request.get_json(silent=True) or {}
+    items = data.get('items', [])
+    db = get_db()
+    validated_payload, status_code = _build_validated_order_items(db, items)
+    if status_code != 200:
+        return validated_payload, status_code
+    return validated_payload
+
+@app.route('/orders', methods=['POST'])
+def place_order():
+    if 'user_id' not in session:
+        return {'error': 'Unauthorized'}, 401
+
+    data           = request.get_json(silent=True) or {}
+    items          = data.get('items', [])
+    payment_method = data.get('payment_method', 'cash')
+
+    db = get_db()
+    validated_payload, status_code = _build_validated_order_items(db, items)
+    if status_code != 200:
+        return validated_payload, status_code
+
+    validated_items = validated_payload['items']
+    total = float(validated_payload['summary']['total'])
 
     # Generate a unique order number
     order_no = generate_order_no()
@@ -4130,8 +4359,9 @@ def place_order():
                    price_at_time,
                    selected_unit,
                    unit_multiplier,
-                   base_price_at_time
-               ) VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                   base_price_at_time,
+                   discount_amount_at_time
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
             (
                 order_id,
                 item['product_id'],
@@ -4139,7 +4369,8 @@ def place_order():
                 item['price'],
                 item['selected_unit'],
                 item['unit_multiplier'],
-                item['base_price_at_time']
+                item['base_price_at_time'],
+                item['discount_amount_at_time']
             )
         )
 
@@ -4248,10 +4479,13 @@ def order_history():
                    oi.quantity,
                    oi.price_at_time,
                    oi.base_price_at_time,
+                   oi.discount_amount_at_time,
                    oi.selected_unit,
                    oi.unit_multiplier,
                    p.name,
                    p.image_filename,
+                   p.unit_options_json,
+                   p.discount_json,
                    p.product_id
                FROM order_items oi
                LEFT JOIN products p ON oi.product_id = p.product_id
@@ -4270,9 +4504,12 @@ def order_history():
                 'qty'           : i['quantity'],
                 'price_at_time' : i['price_at_time'],
                 'basePrice'     : i['base_price_at_time'] if i['base_price_at_time'] is not None else i['price_at_time'],
+                'discountPerUnit': float(i['discount_amount_at_time']) if i['discount_amount_at_time'] is not None else 0,
                 'multiplier'    : float(i['unit_multiplier']) if i['unit_multiplier'] is not None else 1,
                 'unit'          : i['selected_unit'] if i['selected_unit'] else '1 pc',
-                'image_filename': i['image_filename']
+                'image_filename': i['image_filename'],
+                'unit_options'  : _normalize_unit_options(i['unit_options_json']) if i['unit_options_json'] else [],
+                'discounts'     : _normalize_discounts(i['discount_json']) if i['discount_json'] else []
             } for i in items]
         })
 

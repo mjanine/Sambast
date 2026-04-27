@@ -7,6 +7,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let checkoutItems = JSON.parse(localStorage.getItem('checkoutItems')) || [];
     let currentTotal = 0;
+    let currentSubtotal = 0;
+    let currentDiscount = 0;
+
+    function normalizeUnitOptions(options) {
+        if (!Array.isArray(options)) return [];
+        return options.map(option => ({
+            label: String(option && option.label ? option.label : (option && option.value ? option.value : '')).trim(),
+            value: String(option && option.value ? option.value : (option && option.label ? option.label : '')).trim(),
+            multiplier: Number(option && option.multiplier ? option.multiplier : 1)
+        })).filter(option => option.label && option.value);
+    }
+
+    function renderUnitControl(item, index) {
+        const options = normalizeUnitOptions(item && item.unit_options);
+        if (!options.length) {
+            return `<span class="mini-tag">${item.unit || '1 pc'}</span>`;
+        }
+
+        return `
+            <select class="mini-tag" style="border:none;" data-checkout-index="${index}" onchange="window.__checkoutChangeUnit(this)">
+                ${options.map(option => `
+                    <option value="${option.value}" data-multiplier="${option.multiplier}" ${String(item.unit || '').toLowerCase() === String(option.value || '').toLowerCase() ? 'selected' : ''}>
+                        ${option.label}
+                    </option>
+                `).join('')}
+            </select>
+        `;
+    }
 
     function resolveItemImage(item) {
         const rawImage = item?.image || item?.image_filename || item?.img || '';
@@ -65,13 +93,10 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             listContainer.innerHTML = '';
             currentTotal = 0;
-            checkoutItems.forEach(item => {
+            checkoutItems.forEach((item, index) => {
                 const base = parseFloat(item.basePrice ?? item.price ?? 0);
                 const multiplier = parseFloat(item.multiplier ?? 1);
                 const qty = parseInt(item.qty ?? 1);
-
-                const itemTotal = base * multiplier * qty;
-                currentTotal += itemTotal;
 
                 const imgSrc = resolveItemImage(item);
                 const div = document.createElement('div');
@@ -82,7 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <h2 class="item-name">${item.name}</h2>
                         <div class="tag-row">
                             <span class="mini-tag">Qty: ${item.qty}</span>
-                            <span class="mini-tag">${item.unit}</span>
+                            ${renderUnitControl(item, index)}
                         </div>
                     </div>
                 `;
@@ -90,18 +115,56 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        updateSummary();
+        await refreshQuoteAndSummary();
     };
+
+    async function refreshQuoteAndSummary() {
+        currentSubtotal = 0;
+        currentDiscount = 0;
+        currentTotal = 0;
+
+        if (!Array.isArray(checkoutItems) || checkoutItems.length === 0) {
+            updateSummary();
+            return;
+        }
+
+        try {
+            const response = await fetch('/orders/quote', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items: checkoutItems })
+            });
+            const payload = await response.json();
+            if (!response.ok || !payload || !payload.summary) {
+                throw new Error(payload && payload.error ? payload.error : 'Unable to validate pricing.');
+            }
+
+            currentSubtotal = Number(payload.summary.subtotal || 0);
+            currentDiscount = Number(payload.summary.discount || 0);
+            currentTotal = Number(payload.summary.total || 0);
+        } catch (error) {
+            currentSubtotal = checkoutItems.reduce((sum, item) => {
+                const base = parseFloat(item.basePrice ?? item.price ?? 0);
+                const multiplier = parseFloat(item.multiplier ?? 1);
+                const qty = parseInt(item.qty ?? 1);
+                return sum + (base * multiplier * qty);
+            }, 0);
+            currentDiscount = 0;
+            currentTotal = currentSubtotal;
+        }
+
+        updateSummary();
+    }
 
     function updateSummary() {
         const subtotalDisplay = document.getElementById('displaySubtotal');
         const originalDisplay = document.getElementById('displayOriginal');
         const discountDisplay = document.getElementById('displayDiscount');
         const totalDisplay = document.getElementById('displayTotal');
-        
-        const originalPrice = currentTotal;
-        const totalDiscount = 0.00;
-        const finalTotal = originalPrice - totalDiscount;
+
+        const originalPrice = currentSubtotal;
+        const totalDiscount = currentDiscount;
+        const finalTotal = currentTotal;
         
         if (subtotalDisplay) {
             subtotalDisplay.innerText = currentTotal > 0 ? currentTotal.toFixed(2) : "0.00";
@@ -137,6 +200,20 @@ document.addEventListener('DOMContentLoaded', () => {
             if (divider) divider.style.display = 'none';
         }
     }
+
+    window.__checkoutChangeUnit = function(selectElement) {
+        const itemIndex = Number(selectElement.getAttribute('data-checkout-index'));
+        if (!Number.isFinite(itemIndex) || !checkoutItems[itemIndex]) return;
+
+        const selectedOption = selectElement.options[selectElement.selectedIndex];
+        const selectedUnit = String(selectedOption.value || '').trim();
+        const selectedMultiplier = Number(selectedOption.getAttribute('data-multiplier') || 1);
+
+        checkoutItems[itemIndex].unit = selectedUnit || checkoutItems[itemIndex].unit;
+        checkoutItems[itemIndex].multiplier = Number.isFinite(selectedMultiplier) ? selectedMultiplier : 1;
+        localStorage.setItem('checkoutItems', JSON.stringify(checkoutItems));
+        refreshQuoteAndSummary();
+    };
     renderCheckout();
 
     const placeOrderBtn = document.getElementById('placeOrderBtn');

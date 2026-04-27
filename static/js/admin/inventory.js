@@ -15,6 +15,7 @@ const removeImageFlag = document.getElementById("removeImageFlag");
 const stockInput = document.getElementById("formStock");
 const stockModeSelect = document.getElementById("formStockMode");
 const formCategory = document.getElementById("formCategory");
+const formUnit = document.getElementById("formUnit");
 const categoryQuickList = document.getElementById("categoryQuickList");
 const formUnitOptionsJson = document.getElementById("formUnitOptionsJson");
 const formDiscountJson = document.getElementById("formDiscountJson");
@@ -51,6 +52,7 @@ const inventoryCategoryFilter = document.getElementById("inventoryCategoryFilter
 
 const CATEGORY_STORAGE_KEY = "inventory_category_state_v1";
 const categoryOptionsByName = {};
+const categoryIdByName = {};
 let currentBuilderOptions = [];
 let currentEditOptions = [];
 let currentDiscounts = [];
@@ -70,6 +72,63 @@ function getNumericMultiplier(value) {
     return Number.isFinite(parsed) ? parsed : 1;
 }
 
+function parseUnitOptionsFromSelectOption(option) {
+    if (!option) return [];
+    const raw = option.getAttribute("data-unit-options") || "[]";
+    try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.map(entry => ({
+            label: String(entry && entry.label ? entry.label : (entry && entry.value ? entry.value : "")).trim(),
+            value: String(entry && entry.value ? entry.value : (entry && entry.label ? entry.label : "")).trim(),
+            multiplier: getNumericMultiplier(entry && entry.multiplier)
+        })).filter(entry => entry.label && entry.value) : [];
+    } catch (error) {
+        console.error("Failed parsing category unit options", error);
+        return [];
+    }
+}
+
+function getCurrentCategoryOptions() {
+    if (!formCategory) return [];
+    const categoryName = String(formCategory.value || "").trim();
+    return Array.isArray(categoryOptionsByName[categoryName]) ? categoryOptionsByName[categoryName] : [];
+}
+
+function syncStockUnitChoices() {
+    if (!formUnit) return;
+
+    const categoryOptions = getCurrentCategoryOptions();
+    const existingValue = String(formUnit.value || "").trim();
+    const units = [];
+
+    categoryOptions.forEach(option => {
+        const labelText = String(option && option.label ? option.label : option && option.value ? option.value : "").trim();
+        const unitMatch = labelText.match(/[A-Za-z]+$/);
+        const unit = unitMatch ? unitMatch[0].toLowerCase() : "";
+        if (unit && !units.includes(unit)) {
+            units.push(unit);
+        }
+    });
+
+    if (units.length === 0) {
+        return;
+    }
+
+    formUnit.innerHTML = "";
+    units.forEach(unit => {
+        const opt = document.createElement("option");
+        opt.value = unit;
+        opt.textContent = unit;
+        formUnit.appendChild(opt);
+    });
+
+    if (existingValue && units.includes(existingValue.toLowerCase())) {
+        formUnit.value = existingValue.toLowerCase();
+    } else {
+        formUnit.value = units[0];
+    }
+}
+
 function syncProductUnitOptionsField() {
     if (!formUnitOptionsJson || !formCategory) return;
 
@@ -77,12 +136,12 @@ function syncProductUnitOptionsField() {
     const options = Array.isArray(categoryOptionsByName[categoryName]) ? categoryOptionsByName[categoryName] : [];
 
     formUnitOptionsJson.value = JSON.stringify(options.map(entry => ({
-        quantity: String(entry && entry.quantity ? entry.quantity : "").trim(),
-        unit: String(entry && entry.unit ? entry.unit : "").trim(),
-        multiplier: getNumericMultiplier(entry && entry.multiplier != null ? entry.multiplier : entry && entry.quantity),
-        label: `${String(entry && entry.quantity ? entry.quantity : "").trim()} ${String(entry && entry.unit ? entry.unit : "").trim()}`.trim(),
-        value: `${String(entry && entry.quantity ? entry.quantity : "").trim()} ${String(entry && entry.unit ? entry.unit : "").trim()}`.trim()
+        multiplier: getNumericMultiplier(entry && entry.multiplier),
+        label: String(entry && entry.label ? entry.label : entry && entry.value ? entry.value : "").trim(),
+        value: String(entry && entry.value ? entry.value : entry && entry.label ? entry.label : "").trim()
     })));
+
+    syncStockUnitChoices();
 }
 
 function getInventoryCategories() {
@@ -178,12 +237,16 @@ function loadCategoryState() {
                 const name = String(entry && entry.name ? entry.name : "").trim();
                 const options = Array.isArray(entry && entry.options)
                     ? entry.options
-                        .map(optionEntry => ({
-                            quantity: String(optionEntry && optionEntry.quantity ? optionEntry.quantity : "").trim(),
-                            unit: String(optionEntry && optionEntry.unit ? optionEntry.unit : "").trim(),
-                            multiplier: getNumericMultiplier(optionEntry && optionEntry.multiplier != null ? optionEntry.multiplier : optionEntry && optionEntry.quantity)
-                        }))
-                        .filter(optionEntry => optionEntry.quantity && optionEntry.unit)
+                        .map(optionEntry => {
+                            const label = String(optionEntry && optionEntry.label ? optionEntry.label : (optionEntry && optionEntry.value ? optionEntry.value : "")).trim();
+                            const value = String(optionEntry && optionEntry.value ? optionEntry.value : label).trim();
+                            return {
+                                label,
+                                value,
+                                multiplier: getNumericMultiplier(optionEntry && optionEntry.multiplier)
+                            };
+                        })
+                        .filter(optionEntry => optionEntry.label && optionEntry.value)
                     : [];
 
                 return { name, options };
@@ -197,8 +260,15 @@ function loadCategoryState() {
 
 function hydrateCategoryMap(entries) {
     Object.keys(categoryOptionsByName).forEach(name => delete categoryOptionsByName[name]);
+    Object.keys(categoryIdByName).forEach(name => delete categoryIdByName[name]);
     entries.forEach(entry => {
-        categoryOptionsByName[entry.name] = Array.isArray(entry.options) ? entry.options.slice() : [];
+        const normalizedName = String(entry && entry.name ? entry.name : "").trim();
+        if (!normalizedName) return;
+
+        categoryOptionsByName[normalizedName] = Array.isArray(entry.options) ? entry.options.slice() : [];
+        if (entry && entry.id != null && entry.id !== "") {
+            categoryIdByName[normalizedName] = Number(entry.id);
+        }
     });
 }
 
@@ -212,6 +282,10 @@ function renderCategorySelect(preferredValue) {
         const option = document.createElement("option");
         option.value = name;
         option.textContent = name;
+        if (categoryIdByName[name] != null) {
+            option.setAttribute("data-category-id", String(categoryIdByName[name]));
+        }
+        option.setAttribute("data-unit-options", JSON.stringify(categoryOptionsByName[name] || []));
         formCategory.appendChild(option);
     });
 
@@ -356,7 +430,7 @@ function renderCategoryOptionList() {
         row.className = "category-option-item";
 
         const text = document.createElement("span");
-        text.textContent = `${entry.quantity} ${entry.unit}`;
+        text.textContent = String(entry.label || entry.value || "");
 
         const removeBtn = document.createElement("button");
         removeBtn.type = "button";
@@ -382,7 +456,7 @@ function renderEditCategoryOptionList() {
         row.className = "category-option-item";
 
         const text = document.createElement("span");
-        text.textContent = `${entry.quantity} ${entry.unit}`;
+        text.textContent = String(entry.label || entry.value || "");
 
         const removeBtn = document.createElement("button");
         removeBtn.type = "button";
@@ -407,9 +481,10 @@ function openCategoryEditModal(categoryName) {
 
     editingCategoryName = normalized;
     currentEditOptions = (categoryOptionsByName[normalized] || []).map(entry => ({
-        quantity: entry.quantity,
-        unit: entry.unit
-    }));
+        label: String(entry && entry.label ? entry.label : entry && entry.value ? entry.value : "").trim(),
+        value: String(entry && entry.value ? entry.value : entry && entry.label ? entry.label : "").trim(),
+        multiplier: getNumericMultiplier(entry && entry.multiplier)
+    })).filter(entry => entry.label && entry.value);
 
     if (editCategoryNameInput) editCategoryNameInput.value = normalized;
     if (editCategoryQtyInput) editCategoryQtyInput.value = "";
@@ -435,10 +510,23 @@ function initializeCategoryState() {
 
     const baseOptions = Array.from(formCategory.options)
         .filter(opt => opt.value !== "__add_new__")
-        .map(opt => ({ name: opt.value, options: [] }));
+        .map(opt => ({
+            id: opt.getAttribute("data-category-id"),
+            name: opt.value,
+            options: parseUnitOptionsFromSelectOption(opt)
+        }));
 
     const storedState = loadCategoryState();
-    hydrateCategoryMap(storedState && storedState.length ? storedState : baseOptions);
+    hydrateCategoryMap(baseOptions);
+
+    if (storedState && storedState.length) {
+        storedState.forEach(entry => {
+            const serverName = Object.keys(categoryOptionsByName).find(name => name.toLowerCase() === String(entry.name || "").toLowerCase());
+            if (!serverName) return;
+            const mergedOptions = Array.isArray(entry.options) && entry.options.length > 0 ? entry.options : categoryOptionsByName[serverName];
+            categoryOptionsByName[serverName] = mergedOptions;
+        });
+    }
 
     renderCategorySelect();
     renderCategoryQuickList();
@@ -742,9 +830,15 @@ if (addCategoryOptionBtn) {
             return;
         }
 
-        const exists = currentBuilderOptions.some(entry => entry.quantity === quantity && entry.unit === unit);
+        const label = `${quantity} ${unit}`.trim();
+
+        const exists = currentBuilderOptions.some(entry => String(entry.value || "").toLowerCase() === label.toLowerCase());
         if (!exists) {
-            currentBuilderOptions.push({ quantity, unit, multiplier: getNumericMultiplier(quantity) });
+            currentBuilderOptions.push({
+                label,
+                value: label,
+                multiplier: getNumericMultiplier(quantity)
+            });
             renderCategoryOptionList();
         }
 
@@ -753,16 +847,42 @@ if (addCategoryOptionBtn) {
 }
 
 if (saveCategoryBuilderBtn) {
-    saveCategoryBuilderBtn.addEventListener("click", function() {
+    saveCategoryBuilderBtn.addEventListener("click", async function() {
         const categoryName = String(categoryNameInput ? categoryNameInput.value : "").trim();
         if (!categoryName) return;
 
-        ensureCategoryOption(categoryName);
-        categoryOptionsByName[categoryName] = currentBuilderOptions.slice();
-        syncProductUnitOptionsField();
-        saveCategoryState();
-        renderCategoryQuickList();
-        hideCategoryBuilder();
+        const payload = {
+            name: categoryName,
+            unit_options: currentBuilderOptions.slice()
+        };
+
+        try {
+            const response = await fetch('/admin/categories/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if (!response.ok || !result || !result.success || !result.category) {
+                alert(result && result.message ? result.message : 'Unable to save category.');
+                return;
+            }
+
+            const savedName = String(result.category.name || categoryName).trim();
+            categoryOptionsByName[savedName] = Array.isArray(result.category.unit_options) ? result.category.unit_options : payload.unit_options;
+            if (result.category.id != null) {
+                categoryIdByName[savedName] = Number(result.category.id);
+            }
+
+            renderCategorySelect(savedName);
+            syncProductUnitOptionsField();
+            saveCategoryState();
+            renderCategoryQuickList();
+            hideCategoryBuilder();
+        } catch (error) {
+            console.error(error);
+            alert('Network error while saving category.');
+        }
     });
 }
 
@@ -772,9 +892,15 @@ if (editCategoryAddOptionBtn) {
         const unit = String(editCategoryUnitInput ? editCategoryUnitInput.value : "pcs").trim() || "pcs";
         if (!quantity) return;
 
-        const exists = currentEditOptions.some(entry => entry.quantity === quantity && entry.unit === unit);
+        const label = `${quantity} ${unit}`.trim();
+
+        const exists = currentEditOptions.some(entry => String(entry.value || "").toLowerCase() === label.toLowerCase());
         if (!exists) {
-            currentEditOptions.push({ quantity, unit, multiplier: getNumericMultiplier(quantity) });
+            currentEditOptions.push({
+                label,
+                value: label,
+                multiplier: getNumericMultiplier(quantity)
+            });
             renderEditCategoryOptionList();
         }
 
@@ -783,40 +909,56 @@ if (editCategoryAddOptionBtn) {
 }
 
 if (saveEditCategoryBtn) {
-    saveEditCategoryBtn.addEventListener("click", function() {
+    saveEditCategoryBtn.addEventListener("click", async function() {
         if (!editingCategoryName) return;
 
         const newName = String(editCategoryNameInput ? editCategoryNameInput.value : "").trim();
         if (!newName) return;
 
+        const categoryId = categoryIdByName[editingCategoryName];
+        if (!Number.isFinite(categoryId)) {
+            alert('Cannot edit this category because its ID is missing.');
+            return;
+        }
+
         const previousSelected = formCategory ? formCategory.value : "";
         const oldName = editingCategoryName;
-        const existingKeyMatch = Object.keys(categoryOptionsByName).find(
-            name => name.toLowerCase() === newName.toLowerCase() && name.toLowerCase() !== oldName.toLowerCase()
-        );
-        const targetName = existingKeyMatch || newName;
 
-        delete categoryOptionsByName[oldName];
+        try {
+            const response = await fetch(`/admin/categories/${categoryId}/edit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: newName,
+                    unit_options: currentEditOptions
+                })
+            });
+            const result = await response.json();
+            if (!response.ok || !result || !result.success || !result.category) {
+                alert(result && result.message ? result.message : 'Unable to save category changes.');
+                return;
+            }
 
-        const existingAtTarget = Array.isArray(categoryOptionsByName[targetName])
-            ? categoryOptionsByName[targetName].slice()
-            : [];
+            delete categoryOptionsByName[oldName];
+            delete categoryIdByName[oldName];
 
-        const mergedOptions = existingAtTarget.concat(currentEditOptions).filter((entry, index, arr) => {
-            return arr.findIndex(candidate => candidate.quantity === entry.quantity && candidate.unit === entry.unit) === index;
-        });
+            const targetName = String(result.category.name || newName).trim();
+            categoryOptionsByName[targetName] = Array.isArray(result.category.unit_options) ? result.category.unit_options : currentEditOptions.slice();
+            categoryIdByName[targetName] = Number(result.category.id);
 
-        categoryOptionsByName[targetName] = mergedOptions;
+            const preferredValue = previousSelected === oldName ? targetName : previousSelected;
+            renderCategorySelect(preferredValue);
+            renderCategoryQuickList();
+            syncProductUnitOptionsField();
+            saveCategoryState();
 
-        const preferredValue = previousSelected === oldName ? targetName : previousSelected;
-        renderCategorySelect(preferredValue);
-        renderCategoryQuickList();
-        syncProductUnitOptionsField();
-        saveCategoryState();
-
-        closeCategoryEditModal();
-        if (!addProductModal || !addProductModal.classList.contains("show")) {
-            overlay.classList.remove("show");
+            closeCategoryEditModal();
+            if (!addProductModal || !addProductModal.classList.contains("show")) {
+                overlay.classList.remove("show");
+            }
+        } catch (error) {
+            console.error(error);
+            alert('Network error while updating category.');
         }
     });
 }

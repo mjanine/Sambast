@@ -32,8 +32,11 @@ function renderHistory(orders) {
     const base = parseFloat(item.basePrice ?? item.price_at_time ?? item.price ?? 0);
     const multiplier = parseFloat(item.multiplier ?? 1);
     const qty = item.qty ?? 1;
+            const discountPerUnit = parseFloat(item.discountPerUnit ?? 0);
 
-    const itemTotal = (base || 0) * (multiplier || 1) * (qty || 1);
+            const originalLine = (base || 0) * (multiplier || 1) * (qty || 1);
+            const discountLine = (discountPerUnit || 0) * (qty || 1);
+            const itemTotal = Math.max(0, originalLine - discountLine);
     const imgSrc = resolveItemImage(item);
 
     return `
@@ -46,8 +49,12 @@ function renderHistory(orders) {
                 </h2>
 
                 <p class="amount-label">
-                    Price: ₱${itemTotal.toFixed(2)}
+                    ${discountLine > 0 ? `Original: <span style="text-decoration:line-through;opacity:.7;">₱${originalLine.toFixed(2)}</span>` : `Original: ₱${originalLine.toFixed(2)}`}
                 </p>
+
+                ${discountLine > 0 ? `<p class="amount-label" style="color:#A6171C;">Savings: -₱${discountLine.toFixed(2)}</p>` : ""}
+
+                <p class="amount-label"><strong>Final: ₱${itemTotal.toFixed(2)}</strong></p>
 
                 <p class="qty-summary">
                     Qty: ${qty}
@@ -82,8 +89,9 @@ function renderHistory(orders) {
     const base = parseFloat(item.basePrice ?? item.price_at_time ?? item.price ?? 0);
     const multiplier = parseFloat(item.multiplier ?? 1);
     const qty = parseInt(item.qty ?? 1);
+                    const discountPerUnit = parseFloat(item.discountPerUnit ?? 0);
 
-    return sum + (base * multiplier * qty);
+                    return sum + Math.max(0, (base * multiplier) - discountPerUnit) * qty;
 }, 0)
     ).toFixed(2)}
 </strong>
@@ -101,7 +109,9 @@ function buyAgainOrder(orderEncoded) {
         qty: item.qty,
         basePrice: parseFloat(item.basePrice ?? item.price_at_time ?? item.price ?? 0),
         multiplier: item.multiplier ?? 1,
-        unit: item.unit ?? "1 pc"
+        unit: item.unit ?? "1 pc",
+        unit_options: Array.isArray(item.unit_options) ? item.unit_options : [],
+        discounts: Array.isArray(item.discounts) ? item.discounts : []
     }));
 
     localStorage.setItem('checkoutItems', JSON.stringify(itemsToBuy));

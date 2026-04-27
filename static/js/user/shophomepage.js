@@ -159,6 +159,62 @@ function getUnitOptions(product) {
     return [{ label: "1 pc", value: "1 pc", multiplier: 1 }];
 }
 
+function normalizeDiscounts(discounts) {
+    if (!Array.isArray(discounts)) return [];
+    return discounts.map(entry => ({
+        unit: String(entry && entry.unit ? entry.unit : "").trim(),
+        type: String(entry && entry.type ? entry.type : "").trim().toLowerCase(),
+        value: Number(entry && entry.value ? entry.value : 0)
+    })).filter(entry => entry.unit && (entry.type === "percentage" || entry.type === "fixed") && Number.isFinite(entry.value) && entry.value > 0);
+}
+
+function getDiscountForUnit(product, unitValue) {
+    const unitKey = String(unitValue || "").trim().toLowerCase().replace(/\s+/g, "");
+    const discounts = normalizeDiscounts(product && product.discounts);
+    return discounts.find(discount => String(discount.unit || "").trim().toLowerCase().replace(/\s+/g, "") === unitKey) || null;
+}
+
+function computePricing(product, multiplier, unitValue, quantity) {
+    const qty = Number.isFinite(Number(quantity)) ? Number(quantity) : 1;
+    const base = Number(product && product.price ? product.price : 0);
+    const unitMultiplier = Number.isFinite(Number(multiplier)) ? Number(multiplier) : 1;
+    const originalUnitPrice = Math.max(0, base * unitMultiplier);
+    const discount = getDiscountForUnit(product, unitValue);
+
+    let discountAmountPerUnit = 0;
+    if (discount) {
+        if (discount.type === "percentage") {
+            discountAmountPerUnit = originalUnitPrice * (discount.value / 100);
+        } else if (discount.type === "fixed") {
+            discountAmountPerUnit = discount.value;
+        }
+    }
+
+    discountAmountPerUnit = Math.max(0, Math.min(originalUnitPrice, discountAmountPerUnit));
+    const finalUnitPrice = Math.max(0, originalUnitPrice - discountAmountPerUnit);
+
+    return {
+        originalUnitPrice,
+        discountAmountPerUnit,
+        finalUnitPrice,
+        originalLine: originalUnitPrice * qty,
+        discountLine: discountAmountPerUnit * qty,
+        finalLine: finalUnitPrice * qty,
+        discount
+    };
+}
+
+function getDiscountBadgeText(product, unitValue, multiplier) {
+    const pricing = computePricing(product, multiplier, unitValue, 1);
+    if (!pricing.discount || pricing.discountAmountPerUnit <= 0) return "";
+
+    if (pricing.discount.type === "percentage") {
+        return `-${pricing.discount.value}%`;
+    }
+
+    return `-₱${pricing.discountAmountPerUnit.toFixed(2)}`;
+}
+
 function render(list) {
     var grid = document.getElementById('itemGrid');
     grid.innerHTML = "";
@@ -175,11 +231,14 @@ function render(list) {
         var stockLabel = stockValue + " " + unitLabel + (stockValue === 0 ? " (Out of Stock)" : "");
         var initialUnitOptions = getUnitOptions(p);
         var initialMultiplier = initialUnitOptions.length > 0 ? Number(initialUnitOptions[0].multiplier || 1) : 1;
-        var initialPrice = Number(p.price || 0) * initialMultiplier;
+        var initialUnitValue = initialUnitOptions.length > 0 ? String(initialUnitOptions[0].value || initialUnitOptions[0].label || "1 pc") : "1 pc";
+        var initialPricing = computePricing(p, initialMultiplier, initialUnitValue, 1);
+        var discountBadgeText = getDiscountBadgeText(p, initialUnitValue, initialMultiplier);
         div.innerHTML = `
             <div class="flip-inner">
                 <div class="front-face" onclick="toggle(${p.product_id})">
                     <div class="img-box"><img src="${imgSrc}" style="width:100%;height:100%;object-fit:cover;"></div>
+                    ${discountBadgeText ? `<span class="discount-badge">${discountBadgeText}</span>` : ""}
                     <p class="label-cat">${p.category}</p>
                     <h2 class="label-name">${p.name}</h2>
                     <div class="input-row" onclick="event.stopPropagation()">
@@ -213,7 +272,10 @@ function render(list) {
     </select>
 </div>
                     </div>
-                    <p class="label-price">₱${initialPrice.toFixed(2)}</p>
+                    <div class="price-stack" id="price-stack-${p.product_id}">
+                        <p class="label-price-original" id="price-original-${p.product_id}">${initialPricing.discountAmountPerUnit > 0 ? `₱${initialPricing.originalLine.toFixed(2)}` : ""}</p>
+                        <p class="label-price">₱${initialPricing.finalLine.toFixed(2)}</p>
+                    </div>
                     <p class="label-cat">Stock: ${stockLabel}</p>
                     <div class="btn-row" onclick="event.stopPropagation()">
                         <button class="cart-act" onclick="addCart(${p.product_id},${p.price})">CART</button>
@@ -291,6 +353,8 @@ function addCart(id, pr) {
     var product = data.find(p => p.product_id === id);
     if (!product) return;
 
+    const pricing = computePricing(product, multiplier, unit, q);
+
     var cart = JSON.parse(localStorage.getItem('cart')) || [];
 
     var existing = cart.find(item => item.product_id === id && item.unit === unit);
@@ -305,6 +369,11 @@ function addCart(id, pr) {
     qty: q,
     unit: unit,
     multiplier: multiplier,
+    discountType: pricing.discount ? pricing.discount.type : null,
+    discountValue: pricing.discount ? pricing.discount.value : 0,
+    discountAmountPerUnit: pricing.discountAmountPerUnit,
+    unit_options: Array.isArray(product.unit_options) ? product.unit_options : [],
+    discounts: Array.isArray(product.discounts) ? product.discounts : [],
     image: product.image_filename,
     selected: true   // ✅ ADD THIS
 });
@@ -333,6 +402,7 @@ function buyNow(id) {
 
     var unit = selectedOption.value;
     var multiplier = getOptionMultiplier(selectedOption);
+    const pricing = computePricing(product, multiplier, unit, q);
 
     var directItem = [{
         product_id: product.product_id,
@@ -340,7 +410,12 @@ function buyNow(id) {
         basePrice: product.price,
         qty: q,
         unit: unit,
-        multiplier: multiplier
+        multiplier: multiplier,
+        discountType: pricing.discount ? pricing.discount.type : null,
+        discountValue: pricing.discount ? pricing.discount.value : 0,
+        discountAmountPerUnit: pricing.discountAmountPerUnit,
+        unit_options: Array.isArray(product.unit_options) ? product.unit_options : [],
+        discounts: Array.isArray(product.discounts) ? product.discounts : []
     }];
 
     localStorage.setItem('checkoutItems', JSON.stringify(directItem));
@@ -817,14 +892,38 @@ function updateCardPrice(productId) {
 
     const multiplier = getOptionMultiplier(selectedOption);
 
-    const basePrice = parseFloat(product.price);
-
-    const computed = basePrice * multiplier * qty;
+    const unitValue = selectedOption ? selectedOption.value : "1 pc";
+    const pricing = computePricing(product, multiplier, unitValue, qty);
+    const badgeText = getDiscountBadgeText(product, unitValue, multiplier);
 
     const priceEl = document.querySelector("#p-" + productId + " .label-price");
+    const originalEl = document.getElementById("price-original-" + productId);
+    const badgeEl = document.querySelector("#p-" + productId + " .discount-badge");
 
     if (priceEl) {
-        priceEl.innerText = "₱" + computed.toFixed(2);
+        priceEl.innerText = "₱" + pricing.finalLine.toFixed(2);
+    }
+    if (originalEl) {
+        originalEl.innerText = pricing.discountAmountPerUnit > 0 ? ("₱" + pricing.originalLine.toFixed(2)) : "";
+        originalEl.style.display = pricing.discountAmountPerUnit > 0 ? "block" : "none";
+    }
+    if (badgeText) {
+        if (badgeEl) {
+            badgeEl.innerText = badgeText;
+        } else {
+            const card = document.getElementById("p-" + productId);
+            if (card) {
+                const imgBox = card.querySelector(".img-box");
+                if (imgBox) {
+                    const newBadge = document.createElement("span");
+                    newBadge.className = "discount-badge";
+                    newBadge.innerText = badgeText;
+                    imgBox.insertAdjacentElement("afterend", newBadge);
+                }
+            }
+        }
+    } else if (badgeEl) {
+        badgeEl.remove();
     }
 }
 function calculateTotal() {
@@ -852,13 +951,16 @@ function updateSubtotal() {
     const cart = JSON.parse(localStorage.getItem('cart')) || [];
 
     let totalPrice = 0;
+    let totalDiscount = 0;
 
     cart.forEach(item => {
         const price = parseFloat(item.basePrice || 0);
         const multiplier = parseFloat(item.multiplier || 1);
         const qty = parseInt(item.qty || 0);
+        const discountPerUnit = parseFloat(item.discountAmountPerUnit || 0);
 
-        totalPrice += price * multiplier * qty;
+        totalPrice += Math.max(0, (price * multiplier) - discountPerUnit) * qty;
+        totalDiscount += Math.max(0, discountPerUnit) * qty;
     });
 
     const subTotalEl =
@@ -867,6 +969,13 @@ function updateSubtotal() {
 
     if (subTotalEl) {
         subTotalEl.innerText = totalPrice.toFixed(2);
+    }
+
+    const discountEl = document.querySelector('.discount-text');
+    if (discountEl) {
+        discountEl.innerText = totalDiscount > 0
+            ? `Total Discount: -₱${totalDiscount.toFixed(2)}`
+            : 'Total Discount: ₱0.00';
     }
 }
 function syncShopWithCart() {

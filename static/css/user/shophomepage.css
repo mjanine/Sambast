@@ -214,6 +214,19 @@ body.shop-body {
     overflow: hidden; /* 🔥 important so image follows radius */
 }
 
+.discount-badge {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    background: #d84315;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 800;
+    border-radius: 999px;
+    padding: 3px 8px;
+    z-index: 2;
+}
+
 
 
 
@@ -335,6 +348,20 @@ body.shop-body {
 
     width: 100%;
     text-align: right;
+}
+
+.price-stack {
+    width: 100%;
+    margin-top: 4px;
+    margin-bottom: 4px;
+    text-align: right;
+}
+
+.label-price-original {
+    font-size: 10px;
+    color: #6b7280;
+    text-decoration: line-through;
+    margin: 0;
 }
 
 

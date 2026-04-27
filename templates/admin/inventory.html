@@ -222,7 +222,11 @@
                     <label>Category</label>
                     <select name="category" id="formCategory">
                         {% for category in categories %}
-                            <option value="{{ category['name'] }}">{{ category['name'] }}</option>
+                            <option value="{{ category['name'] }}"
+                                    data-category-id="{{ category['id'] }}"
+                                    data-unit-options='{{ category['unit_options']|tojson|forceescape }}'>
+                                {{ category['name'] }}
+                            </option>
                         {% endfor %}
                         <option value="__add_new__">+ Add New Category</option>
                     </select>

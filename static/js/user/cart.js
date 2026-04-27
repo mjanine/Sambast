@@ -39,6 +39,31 @@ function getOptionMultiplier(option) {
     return 1;
 }
 
+function normalizeDiscounts(discounts) {
+    if (!Array.isArray(discounts)) return [];
+    return discounts.map(entry => ({
+        unit: String(entry && entry.unit ? entry.unit : "").trim(),
+        type: String(entry && entry.type ? entry.type : "").trim().toLowerCase(),
+        value: Number(entry && entry.value ? entry.value : 0)
+    })).filter(entry => entry.unit && (entry.type === "percentage" || entry.type === "fixed") && Number.isFinite(entry.value) && entry.value > 0);
+}
+
+function getDiscountAmountPerUnit(item, unitValue, multiplierValue) {
+    const base = parseFloat(item.basePrice ?? item.price ?? 0);
+    const multiplier = Number.isFinite(Number(multiplierValue)) ? Number(multiplierValue) : 1;
+    const originalUnitPrice = Math.max(0, base * multiplier);
+    const unitKey = String(unitValue || "").trim().toLowerCase().replace(/\s+/g, "");
+    const discounts = normalizeDiscounts(item.discounts);
+    const discount = discounts.find(entry => String(entry.unit || "").trim().toLowerCase().replace(/\s+/g, "") === unitKey);
+    if (!discount) return 0;
+
+    if (discount.type === "percentage") {
+        return Math.max(0, Math.min(originalUnitPrice, originalUnitPrice * (discount.value / 100)));
+    }
+
+    return Math.max(0, Math.min(originalUnitPrice, discount.value));
+}
+
 function resolveCartImage(item) {
     const rawImage = item?.image || item?.image_filename || item?.img || '';
     if (!rawImage) return '/static/img/no-image.svg';
@@ -102,7 +127,9 @@ function renderCart() {
 
     const base = item.basePrice ?? item.price;
     const multiplier = item.multiplier ?? 1;
-    const total = base * multiplier * item.qty;
+    const discountPerUnit = getDiscountAmountPerUnit(item, item.unit, multiplier);
+    item.discountAmountPerUnit = discountPerUnit;
+    const total = Math.max(0, (base * multiplier) - discountPerUnit) * item.qty;
 
     const card = document.createElement('div');
     card.className = 'cart-item-card';
@@ -237,14 +264,21 @@ function calculateTotal() {
         const base = parseFloat(item.basePrice ?? item.price ?? 0);
         const qty = parseInt(item.qty ?? 0);
         const multiplier = parseFloat(item.multiplier ?? 1);
+        const discountPerUnit = getDiscountAmountPerUnit(item, item.unit, multiplier);
+        item.discountAmountPerUnit = discountPerUnit;
 
-        total += base * qty * multiplier;
+        total += Math.max(0, (base * multiplier) - discountPerUnit) * qty;
     });
 
     document.getElementById('displaySubtotal').innerText =
         total > 0 ? total.toFixed(2) : "0.00";
 
-    document.getElementById('displayDiscount').innerText = "0000";
+    const totalDiscount = cart.reduce((sum, item) => {
+        const qty = parseInt(item.qty ?? 0);
+        const discountPerUnit = getDiscountAmountPerUnit(item, item.unit, item.multiplier);
+        return sum + (Math.max(0, discountPerUnit) * qty);
+    }, 0);
+    document.getElementById('displayDiscount').innerText = totalDiscount.toFixed(2);
     document.getElementById('selectedCount').innerText = selectedItems.size;
     syncSelectAllCheckbox();
 
@@ -432,6 +466,7 @@ function updateUnit(index) {
 
     currentItem.unit = newUnit;
     currentItem.multiplier = newMultiplier;
+    currentItem.discountAmountPerUnit = getDiscountAmountPerUnit(currentItem, newUnit, newMultiplier);
 
     const newId = currentItem.product_id + "_" + newUnit;
 
