@@ -231,9 +231,11 @@ body.shop-body {
 
 
 .label-cat {
+    margin: 0 !important;
+    padding: 0;
+    line-height: 1;
     font-size: 10px;
     opacity: .7;
-    margin-top: 2px;
 }
 
 .label-name {
@@ -338,16 +340,30 @@ body.shop-body {
 
 
 .label-price {
-    order: 3;
-    font-size: 12px;
-    font-weight: 700;
-    color: #1A323E;
+    order: 6;
 
-    margin-top: 4px;
-    margin-bottom: 4px;
+    margin: 0.05rem 0 0 !important;  /* almost no bottom space */
 
-    width: 100%;
+    padding: 0 !important;
+
+    line-height: 1;
+
     text-align: right;
+    font-size: 12px;
+    font-weight: 800;
+    color: #1A323E;
+}
+
+
+
+
+
+.stock-label {
+    margin: 0 !important;
+    padding: 0;
+    font-size: 10px;
+    line-height: 1;
+    opacity: 0.75;
 }
 
 .price-stack {
@@ -370,8 +386,10 @@ body.shop-body {
 .btn-row {
     order: 3;
     display: flex;
-    gap: 6px;
+    gap: 1px;
+    margin-top: 1px; /* 👈 add this */
 }
+
 
 
 .cart-act {
@@ -699,7 +717,30 @@ body.shop-body {
 
     flex-wrap: wrap;
     width: 100%;
+
+
 }
+.label-cat {
+    order: 1;
+}
+
+.stock-label {
+    order: 2;
+}
+
+/* qty + unit row together */
+.input-row {
+    order: 3;
+}
+
+.price-stack {
+    order: 4;
+}
+
+.btn-row {
+    order: 5;
+}
+
 @media (max-width: 480px) {
     .front-face,
     .back-face {
