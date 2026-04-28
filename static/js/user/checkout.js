@@ -54,6 +54,16 @@ document.addEventListener('DOMContentLoaded', () => {
         })).filter(option => option.label && option.value);
     }
 
+    function normalizeUnitKey(unitValue) {
+        return String(unitValue || '').trim().toLowerCase().replace(/\s+/g, '');
+    }
+
+    function findUnitOption(options, unitValue) {
+        const targetKey = normalizeUnitKey(unitValue);
+        if (!targetKey) return null;
+        return options.find(option => normalizeUnitKey(option.value) === targetKey) || null;
+    }
+
     function renderUnitControl(item, index) {
         const options = normalizeUnitOptions(item && item.unit_options);
         if (!options.length) {
@@ -120,8 +130,73 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    async function hydrateCheckoutUnitOptions() {
+        const needsHydration = checkoutItems.some(item => item && item.product_id);
+        if (!needsHydration) return;
+
+        try {
+            const response = await fetch('/products');
+            if (!response.ok) return;
+
+            const products = await response.json();
+            const productById = new Map((products || []).map(p => [p.product_id, p]));
+
+            let changed = false;
+            const nextItems = [];
+
+            checkoutItems.forEach(item => {
+                if (!item || !item.product_id) return;
+
+                const product = productById.get(item.product_id);
+                if (!product) {
+                    changed = true;
+                    return;
+                }
+
+                const stock = Number(product.stock_status ?? 0);
+                if (!Number.isFinite(stock) || stock <= 0) {
+                    changed = true;
+                    return;
+                }
+
+                const options = normalizeUnitOptions(product.unit_options || product.unitOptions);
+                if (!options.length) {
+                    nextItems.push(item);
+                    return;
+                }
+
+                const matchedOption = findUnitOption(options, item.unit) || options[0];
+                const normalizedUnit = canonicalizeUnitValue(matchedOption.value);
+                const normalizedMultiplier = Number.isFinite(Number(matchedOption.multiplier)) ? Number(matchedOption.multiplier) : 1;
+
+                if (
+                    !item.unit_options ||
+                    normalizeUnitKey(item.unit) !== normalizeUnitKey(normalizedUnit) ||
+                    Number(item.multiplier) !== normalizedMultiplier
+                ) {
+                    changed = true;
+                }
+
+                nextItems.push({
+                    ...item,
+                    unit: normalizedUnit,
+                    multiplier: normalizedMultiplier,
+                    unit_options: options
+                });
+            });
+
+            if (changed) {
+                checkoutItems = nextItems;
+                localStorage.setItem('checkoutItems', JSON.stringify(checkoutItems));
+            }
+        } catch (_) {
+            // Keep checkout functional even if hydration request fails.
+        }
+    }
+
     const renderCheckout = async () => {
         await hydrateMissingCheckoutImages();
+        await hydrateCheckoutUnitOptions();
 
         if (checkoutItems.length === 0) {
             listContainer.innerHTML = '<p style="text-align:center; padding:20px; color:#666;">No items selected.</p>';

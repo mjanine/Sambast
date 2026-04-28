@@ -2579,6 +2579,8 @@ def _get_backend_unit_options(product_name, category, default_unit='pcs'):
     cat = (category or '').lower()
 
     is_feed_category = cat.startswith('feed') or cat.endswith('feed') or 'feed' in cat
+    is_bulk_feed_name = bool(re.search(r'b-meg|gallimax|power\s*maxx|bio|stag|grower|booster|pilmico|integra|chicken\s*feed|marine\s*fish', name))
+    is_dry_pet_food = bool(re.search(r'goodest|whiskas|top\s*breed|smartheart|aozi|nutri\s*chunks|powercat|pedigree', name))
 
     is_pet_feed = (
         is_feed_category and
@@ -2619,6 +2621,22 @@ def _get_backend_unit_options(product_name, category, default_unit='pcs'):
     is_liquid = 'syrup' in name or 'milk' in name or 'gel' in name
     is_wet_food = 'wet' in name or 'pouch' in name
     is_powder = 'powder' in name
+
+    if is_feed_category and is_dry_pet_food and 'feeder' not in name:
+        return [
+            {'label': '1 pc', 'value': '1 pc', 'multiplier': 1.0},
+            {'label': '2 pcs', 'value': '2 pcs', 'multiplier': 2.0},
+            {'label': '3 pcs', 'value': '3 pcs', 'multiplier': 3.0}
+        ]
+
+    if (is_feed_category and is_bulk_feed_name) and 'feeder' not in name:
+        return [
+            {'label': '1kg', 'value': '1kg', 'multiplier': 1.0},
+            {'label': '1/2kg', 'value': '1/2kg', 'multiplier': 0.5},
+            {'label': '1/4kg', 'value': '1/4kg', 'multiplier': 0.25},
+            {'label': '10kg sack', 'value': '10kg sack', 'multiplier': 10.0},
+            {'label': '25kg sack', 'value': '25kg sack', 'multiplier': 25.0}
+        ]
 
     if (is_pet_feed or is_poultry or is_rabbit_feed or is_bird_feed) and 'feeder' not in name:
         return [
