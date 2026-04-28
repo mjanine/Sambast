@@ -1,3 +1,4 @@
+window.ShopCore = window.ShopCore || {};
 var data = [];
 var currentCheckout = [];
 var recommendationInFlight = false;
@@ -22,6 +23,14 @@ function normalizeUnitOptions(options) {
             multiplier: multiplier
         };
     }).filter(Boolean);
+}
+function safePrice(value) {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+}
+function safeMultiplier(m) {
+    const n = Number(m);
+    return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
 function getOptionMultiplier(option) {
@@ -224,8 +233,9 @@ function getDiscountForUnit(product, unitValue) {
 
 function computePricing(product, multiplier, unitValue, quantity) {
     const qty = Number.isFinite(Number(quantity)) ? Number(quantity) : 1;
-    const base = Number(product && product.price ? product.price : 0);
-    const unitMultiplier = Number.isFinite(Number(multiplier)) ? Number(multiplier) : 1;
+    const base = safePrice(product && product.price);
+
+    const unitMultiplier = safeMultiplier(multiplier);
     const originalUnitPrice = Math.max(0, base * unitMultiplier);
     const discount = getDiscountForUnit(product, unitValue);
 
@@ -356,7 +366,7 @@ function toggle(id) {
 function qtyChange(id, d) {
     var el = document.getElementById("qval-" + id);
 
-    var current = parseInt(el.value || 1);
+    var current = parseFloat(el.value || 1);
     var v = current + d;
 
     if (v < 1) v = 1;
@@ -372,12 +382,67 @@ function qtyTyping(id) {
     // allow empty while typing
     if (el.value === "") return;
 
-    // if invalid number
-    if (parseInt(el.value) < 1) {
+    var num = parseFloat(el.value);
+
+    // invalid or below 1
+    if (!Number.isFinite(num) || num < 1) {
         el.value = 1;
     }
 
     updateCardPrice(id);
+}
+
+function updateCardPrice(productId) {
+    const product = data.find(p => p.product_id === productId);
+    if (!product) return;
+
+    const qtyEl = document.getElementById("qval-" + productId);
+    let qty = parseFloat(qtyEl.value);
+
+    if (!Number.isFinite(qty) || qty < 1) qty = 1;
+
+    const unitSelect = document.getElementById("unit-" + productId);
+    const selectedOption = unitSelect.options[unitSelect.selectedIndex];
+
+    const multiplier = getOptionMultiplier(selectedOption);
+    const unitValue = selectedOption ? selectedOption.value : "1 pc";
+
+    const pricing = computePricing(product, multiplier, unitValue, qty);
+    const badgeText = getDiscountBadgeText(product, unitValue, multiplier);
+
+    const priceEl = document.querySelector("#p-" + productId + " .label-price");
+    const originalEl = document.getElementById("price-original-" + productId);
+    const badgeEl = document.querySelector("#p-" + productId + " .discount-badge");
+
+    if (priceEl) {
+        priceEl.innerText = "₱" + pricing.finalLine.toFixed(2);
+    }
+
+    if (originalEl) {
+        originalEl.innerText = pricing.discountAmountPerUnit > 0
+            ? ("₱" + pricing.originalLine.toFixed(2))
+            : "";
+        originalEl.style.display = pricing.discountAmountPerUnit > 0 ? "block" : "none";
+    }
+
+    if (badgeText) {
+        if (badgeEl) {
+            badgeEl.innerText = badgeText;
+        } else {
+            const card = document.getElementById("p-" + productId);
+            if (card) {
+                const imgBox = card.querySelector(".img-box");
+                if (imgBox) {
+                    const newBadge = document.createElement("span");
+                    newBadge.className = "discount-badge";
+                    newBadge.innerText = badgeText;
+                    imgBox.insertAdjacentElement("afterend", newBadge);
+                }
+            }
+        }
+    } else if (badgeEl) {
+        badgeEl.remove();
+    }
 }
 
 
@@ -399,7 +464,8 @@ function updateCartCount() {
 function addCart(id, pr) {
     document.querySelector('.bottom-bar').style.display = 'flex';
 
-    var q = parseInt(document.getElementById("qval-" + id).value);
+    var q = parseFloat(document.getElementById("qval-" + id).value);
+if (!Number.isFinite(q) || q < 1) q = 1;
 
     var unitSelect = document.getElementById("unit-" + id);
     var selectedOption = unitSelect.options[unitSelect.selectedIndex];
@@ -422,6 +488,7 @@ function addCart(id, pr) {
         cart.push({
     product_id: product.product_id,
     name: product.name,
+    category: product.category,   // 🔥 ADD THIS LINE
     basePrice: pr,
     qty: q,
     unit: unit,
@@ -429,11 +496,12 @@ function addCart(id, pr) {
     discountType: pricing.discount ? pricing.discount.type : null,
     discountValue: pricing.discount ? pricing.discount.value : 0,
     discountAmountPerUnit: pricing.discountAmountPerUnit,
-    unit_options: Array.isArray(product.unit_options) ? product.unit_options : [],
-    discounts: Array.isArray(product.discounts) ? product.discounts : [],
+    unit_options: product.unit_options || [],
+    discounts: product.discounts || [],
     image: product.image_filename,
-    selected: true   // ✅ ADD THIS
+    selected: true
 });
+
 
     }
 
@@ -450,7 +518,8 @@ function addCart(id, pr) {
 
 
 function buyNow(id) {
-    var q = parseInt(document.getElementById("qval-" + id).value);
+    var q = parseFloat(document.getElementById("qval-" + id).value);
+if (!Number.isFinite(q) || q < 1) q = 1;
 
     var product = data.find(p => p.product_id === id);
 
@@ -748,7 +817,7 @@ function loadCartState() {
     cart.forEach(item => {
         totalQty += parseInt(item.qty || 0);
 
-        const price = parseFloat(item.basePrice || 0);
+        const price = safePrice(item.basePrice);
         const multiplier = parseFloat(item.multiplier || 1);
 
         totalPrice += price * multiplier * item.qty;
@@ -849,73 +918,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (icon) icon.style.display = "none";
         });
 });
-function updateCardPrice(productId) {
-    const product = data.find(p => p.product_id === productId);
-    if (!product) return;
 
-    const qty = parseInt(document.getElementById("qval-" + productId).value);
-
-
-    const unitSelect = document.getElementById("unit-" + productId);
-    const selectedOption = unitSelect.options[unitSelect.selectedIndex];
-
-    const multiplier = getOptionMultiplier(selectedOption);
-
-    const unitValue = selectedOption ? selectedOption.value : "1 pc";
-    const pricing = computePricing(product, multiplier, unitValue, qty);
-    const badgeText = getDiscountBadgeText(product, unitValue, multiplier);
-
-    const priceEl = document.querySelector("#p-" + productId + " .label-price");
-    const originalEl = document.getElementById("price-original-" + productId);
-    const badgeEl = document.querySelector("#p-" + productId + " .discount-badge");
-
-    if (priceEl) {
-        priceEl.innerText = "₱" + pricing.finalLine.toFixed(2);
-    }
-    if (originalEl) {
-        originalEl.innerText = pricing.discountAmountPerUnit > 0 ? ("₱" + pricing.originalLine.toFixed(2)) : "";
-        originalEl.style.display = pricing.discountAmountPerUnit > 0 ? "block" : "none";
-    }
-    if (badgeText) {
-        if (badgeEl) {
-            badgeEl.innerText = badgeText;
-        } else {
-            const card = document.getElementById("p-" + productId);
-            if (card) {
-                const imgBox = card.querySelector(".img-box");
-                if (imgBox) {
-                    const newBadge = document.createElement("span");
-                    newBadge.className = "discount-badge";
-                    newBadge.innerText = badgeText;
-                    imgBox.insertAdjacentElement("afterend", newBadge);
-                }
-            }
-        }
-    } else if (badgeEl) {
-        badgeEl.remove();
-    }
-}
 function calculateTotal() {
     const footer = document.querySelector('.cart-footer');
     const cart = JSON.parse(localStorage.getItem('cart')) || [];
 
-    let total = 0;
-    let count = 0;
-
-    // if nothing selected, still show footer but show 0
-    if (selectedItems.size === 0) {
-        footer.style.display = 'flex';
-        document.getElementById('displaySubtotal').innerText = "0.00";
-        document.getElementById('selectedCount').innerText = "0";
-        return;
-    }
-
-
     footer.style.display = 'flex';
 
-    document.getElementById('displaySubtotal').innerText = total.toFixed(2);
-    document.getElementById('selectedCount').innerText = count;
+    document.getElementById('displaySubtotal').innerText = "0.00";
+    document.getElementById('selectedCount').innerText = "0";
 }
+
 function updateSubtotal() {
     const cart = JSON.parse(localStorage.getItem('cart')) || [];
 
@@ -923,7 +936,7 @@ function updateSubtotal() {
     let totalDiscount = 0;
 
     cart.forEach(item => {
-        const price = parseFloat(item.basePrice || 0);
+        const price = safePrice(item.basePrice);
         const multiplier = parseFloat(item.multiplier || 1);
         const qty = parseInt(item.qty || 0);
         const discountPerUnit = parseFloat(item.discountAmountPerUnit || 0);

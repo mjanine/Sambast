@@ -1,8 +1,22 @@
+window.ShopCore = window.ShopCore || {};
+
 let editMode = false;
-let allSelected = false;
 
 let cart = JSON.parse(localStorage.getItem('cart')) || [];
 let selectedItems = new Set();
+
+function getFullProduct(item) {
+    const base = item.basePrice ?? item.price ?? 0;
+
+    return {
+        name: item.name,
+        category: item.category || item.cat || "",
+        price: base,
+        unit_options: item.unit_options || [],
+        discounts: item.discounts || []
+    };
+}
+
 
 function normalizeUnitOptions(options) {
     if (!Array.isArray(options)) return [];
@@ -125,7 +139,8 @@ function renderCart() {
 
     cart.forEach((item, index) => {
 
-    const base = item.basePrice ?? item.price;
+    const product = getFullProduct(item);
+const base = product.price;
     const multiplier = item.multiplier ?? 1;
     const discountPerUnit = getDiscountAmountPerUnit(item, item.unit, multiplier);
     item.discountAmountPerUnit = discountPerUnit;
@@ -147,8 +162,8 @@ function renderCart() {
             <h2 class="item-name">${item.name}</h2>
 
             <select class="size-dropdown"
-                onchange="updateUnit(${index}, this.value)">
-                ${(getUnitOptions(item) || [{label:"1 pc", value:"1 pc", multiplier:1}]).map(u => `
+    onchange="updateUnit(${index}, this.value)">
+    ${(getUnitOptions(getFullProduct(item)) || [{label:"1 pc", value:"1 pc", multiplier:1}]).map(u => `
                     <option 
                         value="${u.value}" 
                         data-multiplier="${u.multiplier}"
@@ -205,7 +220,7 @@ function updateQty(index, delta) {
     cart[index].qty = (cart[index].qty || 1) + delta;
 
     if (cart[index].qty < 1) {
-        cart.splice(index, 1);
+        cart = cart.filter((_, i) => i !== index);
         selectedItems.clear();
     }
 
@@ -229,6 +244,7 @@ function toggleSelectAll(checkbox) {
     calculateTotal();
     syncSelectAllCheckbox();
 }
+
 
 
 
@@ -274,6 +290,8 @@ function calculateTotal() {
         total > 0 ? total.toFixed(2) : "0.00";
 
     const totalDiscount = cart.reduce((sum, item) => {
+    const id = item.product_id + "_" + item.unit;
+    if (!selectedItems.has(id)) return sum;
         const qty = parseInt(item.qty ?? 0);
         const discountPerUnit = getDiscountAmountPerUnit(item, item.unit, item.multiplier);
         return sum + (Math.max(0, discountPerUnit) * qty);
@@ -309,6 +327,7 @@ function syncSelectAllCheckbox() {
     else {
         // 🔥 partial selection state (VERY IMPORTANT UX)
         checkbox.checked = false;
+        checkbox.indeterminate = true;
     }
 }
 
@@ -335,77 +354,52 @@ document.querySelector('.checkout-btn').addEventListener('click', () => {
 
 
 function getUnitOptions(product) {
-    if (!product) return [{ label: "1 pc", value: "1 pc", multiplier: 1 }];
-
-    const storedUnitOptions = normalizeUnitOptions(product.unit_options);
-    if (storedUnitOptions.length > 0) {
-        return storedUnitOptions;
+    if (!product) {
+        return [{ label: "1 pc", value: "1 pc", multiplier: 1 }];
     }
 
     const name = (product.name || "").toLowerCase();
-    const cat = (product.category || "").toLowerCase();
+    const cat = String(product.category || product.cat || "").toLowerCase();
 
-    const isFeedCategory = cat.includes("feeds");
 
-    const isPetFeed =
-        isFeedCategory &&
-        (name.includes("feed") ||
-         name.includes("chicken") ||
-         name.includes("dog food") ||
-         name.includes("cat food") ||
-         name.includes("rabbit feed") ||
-         name.includes("bird feed"));
+    // -----------------------------
+    // 1. CATEGORY DETECTION (FIXED ORDER)
+    // -----------------------------
+    const isMedicine = cat.includes("medicine");
+    const isSupply = cat.includes("supplies");
+    const isFeed = cat.includes("feeds");
 
-    const isPoultry = name.includes("chicken") || name.includes("chick");
-    const isRabbitFeed = name.includes("rabbit");
-    const isBirdFeed = name.includes("bird");
+    // -----------------------------
+    // 2. BACKEND OPTIONS (SAFE FALLBACK)
+    // Only use if NO custom rule applies
+    // -----------------------------
+    const storedUnitOptions = normalizeUnitOptions(product.unit_options || product.unitOptions);
 
-    const isSupply =
-        cat.includes("supplies") ||
-        name.includes("leash") ||
-        name.includes("collar") ||
-        name.includes("harness") ||
-        name.includes("bowl") ||
-        name.includes("feeder") ||
-        name.includes("cage") ||
-        name.includes("toy");
 
-    const isLitter = name.includes("litter");
+    const hasCustomRule =
+        isMedicine ||
+        isSupply ||
+        isFeed ||
+        /progen z/i.test(name);
 
-    const isMedicine =
-        cat.includes("medicine") ||
-        name.includes("tablet") ||
-        name.includes("capsule") ||
-        name.includes("vitamin");
+    if (storedUnitOptions.length > 0 && !hasCustomRule) {
+        return storedUnitOptions;
+    }
 
-    const isLiquid = name.includes("syrup") || name.includes("milk") || name.includes("gel");
-
-    const isWetFood = name.includes("wet") || name.includes("pouch");
-
-    const isPowder = name.includes("powder");
-
-    // 🐔 FEEDS (fraction-based pricing)
-    if ((isPetFeed || isPoultry || isRabbitFeed || isBirdFeed) && !name.includes("feeder")) {
+    // -----------------------------
+    // 3. SPECIAL PRODUCT OVERRIDE
+    // PROGEN Z FIX (YOUR REQUEST)
+    // -----------------------------
+    if (/progen z/i.test(name)) {
         return [
-            { label: "1kg", value: "1kg", multiplier: 1 },
-            { label: "1/2kg", value: "1/2kg", multiplier: 0.5 },
-            { label: "1/4kg", value: "1/4kg", multiplier: 0.25 },
-            { label: "1/8kg", value: "1/8kg", multiplier: 0.125 },
-            { label: "25kg sack", value: "25kg sack", multiplier: 25 },
-            { label: "50kg sack", value: "50kg sack", multiplier: 50 }
+            { label: "per sachet (200g)", value: "sachet_200g", multiplier: 0.2 },
+            { label: "per bottle (1kg)", value: "bottle_1kg", multiplier: 1 }
         ];
     }
 
-    // 🐱🐶 LITTER (fixed weight packs)
-    if (isLitter) {
-        return [
-            { label: "5kg", value: "5kg", multiplier: 5 },
-            { label: "10kg", value: "10kg", multiplier: 10 },
-            { label: "20kg", value: "20kg", multiplier: 20 }
-        ];
-    }
-
-    // 🧰 SUPPLIES (simple per piece)
+    // -----------------------------
+    // 4. SUPPLIES (PCS ONLY)
+    // -----------------------------
     if (isSupply) {
         return [
             { label: "1 pc", value: "1 pc", multiplier: 1 },
@@ -414,53 +408,132 @@ function getUnitOptions(product) {
         ];
     }
 
-    // 💊 MEDICINE (pack-based logic)
-    if (isMedicine) {
+    // -----------------------------
+    // 5. MEDICINE RULES
+    // -----------------------------
+    const isTabletMedicine =
+        isMedicine &&
+        /tablet|capsule|levamisole|albendazole|premoxil|vitmin pro/i.test(name);
+
+    const isLiquidMedicine =
+        isMedicine &&
+        /syrup|vitmin|vitamin|lc vit|cosi/i.test(name);
+
+    const isPowderMedicine =
+        isMedicine && /powder/i.test(name);
+
+    if (isTabletMedicine) {
         return [
             { label: "per tablet", value: "per tablet", multiplier: 1 },
             { label: "per strip", value: "per strip", multiplier: 10 },
-            { label: "per box", value: "per box", multiplier: 100 },
+            { label: "per box", value: "per box", multiplier: 100 }
+        ];
+    }
+
+    if (isLiquidMedicine) {
+        return [
             { label: "per bottle", value: "per bottle", multiplier: 1 }
         ];
     }
 
-    // 🧴 LIQUID
-    if (isLiquid) {
+    if (isPowderMedicine) {
         return [
-            { label: "per bottle", value: "per bottle", multiplier: 1 },
-            { label: "per box", value: "per box", multiplier: 12 }
+            { label: "per pack", value: "per pack", multiplier: 1 }
         ];
     }
 
-    // 🍖 WET FOOD
-    if (isWetFood) {
+    // -----------------------------
+    // 6. FEEDS
+    // -----------------------------
+    const isDryPetFood =
+        isFeed &&
+        /goodest|whiskas|top breed|smartheart|aozi|nutri chunks|powercat|pedigree/i.test(name);
+
+    const isWetPetFood =
+        isFeed &&
+        /wet food|sachet|pouch|pedigree adult wet/i.test(name);
+
+    const isBottleFeed =
+        /milk|beefpro|cosi pet milk/i.test(name);
+
+    const isBulkFeed =
+        isFeed &&
+        /b-meg|gallimax|power maxx|bio|stag|grower|booster|pilmico|integra|chicken feed|marine fish/i.test(name);
+
+    const isPowder = /powder|dextrose/i.test(name);
+
+    // -----------------------------
+    // DRY PET FOOD (PCS)
+    // -----------------------------
+    if (isDryPetFood) {
         return [
-            { label: "per pouch", value: "per pouch", multiplier: 1 },
-            { label: "per pack", value: "per pack", multiplier: 6 },
-            { label: "3 packs", value: "3 packs", multiplier: 3 },
-            { label: "6 packs", value: "6 packs", multiplier: 6 }
+            { label: "1 pc", value: "1 pc", multiplier: 1 },
+            { label: "2 pcs", value: "2 pcs", multiplier: 2 },
+            { label: "3 pcs", value: "3 pcs", multiplier: 3 }
         ];
     }
 
-    // 🧂 POWDER
-    if (isPowder) {
+    // -----------------------------
+    // WET FOOD (SACHET / BOX)
+    // -----------------------------
+    if (isWetPetFood) {
         return [
-            { label: "per pack", value: "per pack", multiplier: 1 },
-            { label: "per kilo", value: "per kilo", multiplier: 1 },
+            { label: "per sachet", value: "per sachet", multiplier: 1 },
             { label: "per box", value: "per box", multiplier: 10 }
         ];
     }
 
+    // -----------------------------
+    // BOTTLE / MILK PRODUCTS
+    // -----------------------------
+    if (isBottleFeed) {
+        return [
+            { label: "per bottle", value: "per bottle", multiplier: 1 },
+            { label: "per liter", value: "per liter", multiplier: 1 }
+        ];
+    }
+
+    // -----------------------------
+    // BULK FEEDS (KG / SACK)
+    // -----------------------------
+    if (isBulkFeed) {
+        return [
+            { label: "1kg", value: "1kg", multiplier: 1 },
+            { label: "1/2kg", value: "1/2kg", multiplier: 0.5 },
+            { label: "1/4kg", value: "1/4kg", multiplier: 0.25 },
+            { label: "10kg sack", value: "10kg sack", multiplier: 10 },
+            { label: "25kg sack", value: "25kg sack", multiplier: 25 }
+        ];
+    }
+
+    // -----------------------------
+    // POWDER
+    // -----------------------------
+    if (isPowder) {
+        return [
+            { label: "per pack", value: "per pack", multiplier: 1 },
+            { label: "1kg", value: "1kg", multiplier: 1 },
+            { label: "5kg", value: "5kg", multiplier: 5 }
+        ];
+    }
+
+    // -----------------------------
+    // DEFAULT
+    // -----------------------------
     return [{ label: "1 pc", value: "1 pc", multiplier: 1 }];
 }
-function updateUnit(index) {
+function updateUnit(index, selectedValue) {
     const select = document.querySelectorAll('.size-dropdown')[index];
-    const option = select.options[select.selectedIndex];
+    if (!select) return;
+
+    const option = Array.from(select.options).find(o => o.value === selectedValue);
+    if (!option) return;
 
     const newUnit = option.value;
     const newMultiplier = getOptionMultiplier(option);
 
     const currentItem = cart[index];
+    if (!currentItem) return;
 
     const oldId = currentItem.product_id + "_" + currentItem.unit;
 
@@ -470,13 +543,11 @@ function updateUnit(index) {
 
     const newId = currentItem.product_id + "_" + newUnit;
 
-    // 🔥 FIX: update selection key
     if (selectedItems.has(oldId)) {
         selectedItems.delete(oldId);
         selectedItems.add(newId);
     }
 
-    // merge duplicates
     const duplicateIndex = cart.findIndex((item, i) =>
         i !== index &&
         item.product_id === currentItem.product_id &&
@@ -485,16 +556,18 @@ function updateUnit(index) {
 
     if (duplicateIndex !== -1) {
         cart[duplicateIndex].qty += currentItem.qty;
-        cart.splice(index, 1);
 
-        selectedItems.clear(); // safer reset after merge
+        // remove safely
+        cart = cart.filter((_, i) => i !== index);
+
+        selectedItems.clear();
     }
 
     localStorage.setItem('cart', JSON.stringify(cart));
-
     renderCart();
     calculateTotal();
 }
+
 
 
 function toggleEditMode() {
@@ -532,31 +605,6 @@ function toggleEditMode() {
    EDIT MODE SYSTEM (SAFE)
 ========================= */
 
-function toggleEditMode() {
-    editMode = !editMode;
-
-    const editFooter = document.getElementById('editFooter');
-    const normalFooter = document.getElementById('normalFooter');
-    const checkoutBtn = document.getElementById('checkoutBtn');
-    const footer = document.querySelector('.cart-footer');
-    const editBtn = document.getElementById('editBtn');
-
-    if (!editFooter || !normalFooter || !checkoutBtn) return;
-
-    if (editMode) {
-        editFooter.style.display = 'flex';
-        normalFooter.style.display = 'none';
-        checkoutBtn.style.display = 'none';
-        footer.classList.add('edit-mode');
-        editBtn.innerText = "Done";
-    } else {
-        editFooter.style.display = 'none';
-        normalFooter.style.display = 'flex';
-        checkoutBtn.style.display = 'inline-block';
-        footer.classList.remove('edit-mode');
-        editBtn.innerText = "Edit";
-    }
-}
 
 /* =========================
    SELECT ALL / NONE
