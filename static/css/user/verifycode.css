@@ -97,19 +97,20 @@ body, html {
 .otp-container { 
     display: flex; 
     justify-content: space-between; 
-    gap: 8px; 
+    gap: clamp(6px, 2.2vw, 10px); 
     margin-bottom: 25px; 
     width: 100%; 
+    max-width: 420px;
 }
 
 .otp-container input {
-    width: 62px;
-    height: 85px;
-    border-radius: 20px;
+    width: clamp(40px, 12vw, 62px);
+    height: clamp(56px, 16vw, 85px);
+    border-radius: clamp(12px, 3.5vw, 20px);
     border: 1px solid var(--text-pure-black);
     background-color: var(--fill-natural-beige);
     text-align: center;
-    font-size: 1.5rem;
+    font-size: clamp(1rem, 4vw, 1.5rem);
     font-weight: 800;
     outline: none;
     color: var(--text-pure-black);
@@ -161,4 +162,11 @@ body, html {
     color: var(--action-ruby-red); 
     text-decoration: none; 
     font-weight: 700; 
+}
+
+@media (max-width: 430px) {
+    .mobile-container {
+        padding-left: 20px;
+        padding-right: 20px;
+    }
 }
