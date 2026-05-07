@@ -1,109 +1,132 @@
 import os
-import sqlite3
-import sys
+
+import psycopg2
+from dotenv import load_dotenv
 
 
-def table_exists(cursor, table_name):
-    row = cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+load_dotenv()
+
+
+def _table_exists(cursor, table_name):
+    cursor.execute(
+        """
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_name = %s
+        )
+        """,
         (table_name,),
-    ).fetchone()
-    return row is not None
+    )
+    return bool(cursor.fetchone()[0])
+
+
+def _column_exists(cursor, table_name, column_name):
+    cursor.execute(
+        """
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = %s
+              AND column_name = %s
+        )
+        """,
+        (table_name, column_name),
+    )
+    return bool(cursor.fetchone()[0])
+
+
+def _get_fk_name(cursor):
+    cursor.execute(
+        """
+        SELECT tc.constraint_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+         AND tc.table_schema = kcu.table_schema
+        JOIN information_schema.constraint_column_usage ccu
+          ON ccu.constraint_name = tc.constraint_name
+         AND ccu.table_schema = tc.table_schema
+        WHERE tc.table_schema = 'public'
+          AND tc.table_name = 'pets'
+          AND tc.constraint_type = 'FOREIGN KEY'
+          AND kcu.column_name = 'user_id'
+          AND ccu.table_name = 'users'
+          AND ccu.column_name = 'user_id'
+        LIMIT 1
+        """
+    )
+    row = cursor.fetchone()
+    return row[0] if row else None
 
 
 def main():
-    db_path = sys.argv[1] if len(sys.argv) > 1 else "database.db"
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError(
+            "DATABASE_URL environment variable not set. "
+            "Please configure your Supabase PostgreSQL connection string."
+        )
 
-    if not os.path.exists(db_path):
-        raise FileNotFoundError(f"Database not found: {db_path}")
-
-    conn = sqlite3.connect(db_path)
+    conn = psycopg2.connect(database_url)
     cursor = conn.cursor()
 
     try:
-        # Required by the migration sequence.
-        cursor.execute("PRAGMA foreign_keys = OFF;")
+        if not _table_exists(cursor, "pets"):
+            raise RuntimeError("Table 'pets' does not exist. Nothing to repair.")
 
-        if not table_exists(cursor, "pets"):
-            raise RuntimeError("Table 'pets' does not exist. Nothing to migrate.")
+        if not _table_exists(cursor, "users"):
+            raise RuntimeError("Table 'users' does not exist. Cannot create foreign key.")
 
-        if table_exists(cursor, "pets_old"):
-            raise RuntimeError(
-                "Table 'pets_old' already exists. Resolve it before running this script."
-            )
-
-        users_columns = {
-            row[1] for row in cursor.execute("PRAGMA table_info(users)").fetchall()
-        }
-        if "user_id" not in users_columns:
+        if not _column_exists(cursor, "users", "user_id"):
             raise RuntimeError("Table 'users' is missing expected 'user_id' column.")
 
-        cursor.execute("BEGIN;")
+        if not _column_exists(cursor, "pets", "user_id"):
+            raise RuntimeError("Table 'pets' is missing expected 'user_id' column.")
 
-        cursor.execute("ALTER TABLE pets RENAME TO pets_old;")
+        existing_fk = _get_fk_name(cursor)
+        if existing_fk:
+            print(f"Foreign key already exists: {existing_fk}")
+            conn.commit()
+            return
+
+        # If orphaned pet rows exist, nullify user_id so FK creation succeeds.
+        cursor.execute(
+            """
+            UPDATE pets p
+            SET user_id = NULL
+            WHERE p.user_id IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM users u
+                  WHERE u.user_id = p.user_id
+              )
+            """
+        )
+        orphan_rows_fixed = cursor.rowcount
 
         cursor.execute(
             """
-            CREATE TABLE pets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                name TEXT,
-                species TEXT,
-                breed TEXT,
-                age_months INTEGER,
-                weight_kg REAL,
-                lifestyle_classification TEXT DEFAULT 'Unclassified',
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
-            )
+            ALTER TABLE pets
+            ADD CONSTRAINT pets_user_id_fkey
+            FOREIGN KEY (user_id)
+            REFERENCES users(user_id)
             """
         )
 
-        cursor.execute(
-            """
-            INSERT INTO pets (
-                id,
-                user_id,
-                name,
-                species,
-                breed,
-                age_months,
-                weight_kg,
-                lifestyle_classification
-            )
-            SELECT
-                id,
-                user_id,
-                name,
-                species,
-                breed,
-                age_months,
-                weight_kg,
-                lifestyle_classification
-            FROM pets_old
-            """
-        )
-
-        cursor.execute("DROP TABLE pets_old;")
         conn.commit()
+        print(
+            "pets foreign key repair complete. "
+            f"Orphan rows fixed: {orphan_rows_fixed}. Constraint: pets_user_id_fkey"
+        )
 
     except Exception:
         conn.rollback()
         raise
-
     finally:
-        cursor.execute("PRAGMA foreign_keys = ON;")
-        conn.commit()
-
-    fk_rows = cursor.execute("PRAGMA foreign_key_list(pets)").fetchall()
-    fk_ok = any(
-        row[2] == "users" and row[3] == "user_id" and row[4] == "user_id"
-        for row in fk_rows
-    )
-
-    if not fk_ok:
-        raise RuntimeError("FK validation failed: pets.user_id is not mapped to users.user_id")
-
-    print("pets foreign key repair complete.")
+        cursor.close()
+        conn.close()
 
 
 if __name__ == "__main__":

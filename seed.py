@@ -1,11 +1,24 @@
 import argparse
 import csv
 import re
-import sqlite3
+import psycopg2
+from psycopg2 import sql
 from pathlib import Path
+import os
+from dotenv import load_dotenv
 
 
-DEFAULT_DB_PATH = Path(__file__).with_name("database.db")
+load_dotenv()
+
+# Get DATABASE_URL from environment
+DATABASE_URL = os.getenv('DATABASE_URL')
+if not DATABASE_URL:
+    raise RuntimeError(
+        'DATABASE_URL environment variable not set. '
+        'Please configure your Supabase PostgreSQL connection string.'
+    )
+
+DEFAULT_DB_PATH = None  # Not used for PostgreSQL
 DEFAULT_CSV_PATH = Path(__file__).with_name("sambast_inventory_list_v2.csv")
 
 CANONICAL_COLUMNS = [
@@ -145,136 +158,159 @@ def resolve_image_filename(name, explicit_filename=""):
 
 
 def ensure_products_table(conn):
-	conn.execute(
-		'''
-		CREATE TABLE IF NOT EXISTS products (
-			product_id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL,
-			category TEXT,
-			price REAL NOT NULL,
-			stock_status INTEGER DEFAULT 1,
-			image_filename TEXT,
-			description TEXT
-		)
-		'''
-	)
+    with conn.cursor() as cur:
+        cur.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS products (
+                product_id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                category TEXT,
+                price REAL NOT NULL,
+                stock_status INTEGER DEFAULT 1,
+                image_filename TEXT,
+                description TEXT,
+                purpose TEXT,
+                target_species TEXT,
+                tags TEXT
+            )
+            '''
+        )
+        conn.commit()
 
 
 def get_table_columns(conn, table_name):
-	rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-	return {row[1] for row in rows}
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = %s
+        """, (table_name,))
+        return {row[0] for row in cur.fetchall()}
 
 
 def table_exists(conn, table_name):
-	row = conn.execute(
-		"SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-		(table_name,),
-	).fetchone()
-	return row is not None
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT EXISTS(
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = %s
+            )
+        """, (table_name,))
+        return cur.fetchone()[0]
 
+def seed_products(database_url, csv_path, replace_existing=True, truncate=False, dry_run=False):
+    if not csv_path.exists():
+        raise FileNotFoundError(f"CSV file not found: {csv_path}")
 
-def seed_products(db_path, csv_path, replace_existing=True, truncate=False, dry_run=False):
-	if not csv_path.exists():
-		raise FileNotFoundError(f"CSV file not found: {csv_path}")
+    conn = psycopg2.connect(database_url)
 
-	conn = sqlite3.connect(str(db_path))
-	conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        ensure_products_table(conn)
+        available_columns = get_table_columns(conn, "products")
 
-	try:
-		ensure_products_table(conn)
-		available_columns = get_table_columns(conn, "products")
+        if truncate:
+            with conn.cursor() as cur:
+                if table_exists(conn, "order_items"):
+                    cur.execute("""
+                        SELECT COUNT(*) FROM order_items 
+                        WHERE product_id IN (SELECT product_id FROM products)
+                    """)
+                    dependent_count = cur.fetchone()[0]
+                    if dependent_count:
+                        cur.execute("""
+                            DELETE FROM order_items 
+                            WHERE product_id IN (SELECT product_id FROM products)
+                        """)
+                        conn.commit()
+                        print(f"Truncate mode: removed {dependent_count} dependent order_items row(s).")
+                cur.execute("DELETE FROM products")
+                conn.commit()
 
-		if truncate:
-			if table_exists(conn, "order_items"):
-				dependent_count = conn.execute(
-					"SELECT COUNT(*) FROM order_items WHERE product_id IN (SELECT product_id FROM products)"
-				).fetchone()[0]
-				if dependent_count:
-					conn.execute(
-						"DELETE FROM order_items WHERE product_id IN (SELECT product_id FROM products)"
-					)
-					print(f"Truncate mode: removed {dependent_count} dependent order_items row(s).")
-			conn.execute("DELETE FROM products")
+        inserted = 0
+        updated = 0
+        skipped = 0
+        invalid = 0
 
-		inserted = 0
-		updated = 0
-		skipped = 0
-		invalid = 0
+        with csv_path.open("r", encoding="utf-8-sig", newline="") as csv_file:
+            reader = csv.DictReader(csv_file)
+            header_map = build_header_map(reader.fieldnames)
 
-		with csv_path.open("r", encoding="utf-8-sig", newline="") as csv_file:
-			reader = csv.DictReader(csv_file)
-			header_map = build_header_map(reader.fieldnames)
+            if not header_map.get("name") or not header_map.get("price"):
+                raise ValueError("CSV must contain columns for product name and price.")
 
-			if not header_map.get("name") or not header_map.get("price"):
-				raise ValueError("CSV must contain columns for product name and price.")
+            for line_number, row in enumerate(reader, start=2):
+                name = csv_get(row, header_map, "name")
+                price = parse_float(csv_get(row, header_map, "price"))
 
-			for line_number, row in enumerate(reader, start=2):
-				name = csv_get(row, header_map, "name")
-				price = parse_float(csv_get(row, header_map, "price"))
+                if not name or price is None:
+                    invalid += 1
+                    print(f"Skipping invalid row {line_number}: missing name or price")
+                    continue
 
-				if not name or price is None:
-					invalid += 1
-					print(f"Skipping invalid row {line_number}: missing name or price")
-					continue
+                category = csv_get(row, header_map, "category", "")
+                description = csv_get(row, header_map, "description", "")
+                target_species = csv_get(row, header_map, "target_species", "")
+                if not category:
+                    category = infer_category(name, description, target_species)
 
-				category = csv_get(row, header_map, "category", "")
-				description = csv_get(row, header_map, "description", "")
-				target_species = csv_get(row, header_map, "target_species", "")
-				if not category:
-					category = infer_category(name, description, target_species)
+                record = {
+                    "name": name,
+                    "category": category,
+                    "price": price,
+                    "stock_status": parse_int(csv_get(row, header_map, "stock_status", 20), 20),
+                    "image_filename": resolve_image_filename(name, csv_get(row, header_map, "image_filename", "")),
+                    "description": description,
+                    "purpose": csv_get(row, header_map, "purpose", ""),
+                    "target_species": target_species,
+                    "tags": csv_get(row, header_map, "tags", ""),
+                }
 
-				record = {
-					"name": name,
-					"category": category,
-					"price": price,
-					"stock_status": parse_int(csv_get(row, header_map, "stock_status", 20), 20),
-					"image_filename": resolve_image_filename(name, csv_get(row, header_map, "image_filename", "")),
-					"description": description,
-					"purpose": csv_get(row, header_map, "purpose", ""),
-					"target_species": target_species,
-					"tags": csv_get(row, header_map, "tags", ""),
-				}
+                insertable = {
+                    column: value
+                    for column, value in record.items()
+                    if column in available_columns
+                }
 
-				insertable = {
-					column: value
-					for column, value in record.items()
-					if column in available_columns
-				}
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT product_id FROM products WHERE LOWER(name) = LOWER(%s)",
+                        (name,),
+                    )
+                    existing = cur.fetchone()
 
-				existing = conn.execute(
-					"SELECT product_id FROM products WHERE LOWER(name) = LOWER(?)",
-					(name,),
-				).fetchone()
+                if existing:
+                    if not replace_existing:
+                        skipped += 1
+                        continue
 
-				if existing:
-					if not replace_existing:
-						skipped += 1
-						continue
+                    if not dry_run:
+                        set_clause = ", ".join([f"{column} = %s" for column in insertable.keys()])
+                        values = list(insertable.values()) + [existing[0]]
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                f"UPDATE products SET {set_clause} WHERE product_id = %s",
+                                values,
+                            )
+                        conn.commit()
+                    updated += 1
+                else:
+                    if not dry_run:
+                        column_clause = ", ".join(insertable.keys())
+                        placeholder_clause = ", ".join(["%s"] * len(insertable))
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                f"INSERT INTO products ({column_clause}) VALUES ({placeholder_clause})",
+                                list(insertable.values()),
+                            )
+                        conn.commit()
+                    inserted += 1
 
-					if not dry_run:
-						set_clause = ", ".join([f"{column} = ?" for column in insertable.keys()])
-						values = list(insertable.values()) + [existing[0]]
-						conn.execute(
-							f"UPDATE products SET {set_clause} WHERE product_id = ?",
-							values,
-						)
-					updated += 1
-				else:
-					if not dry_run:
-						column_clause = ", ".join(insertable.keys())
-						placeholder_clause = ", ".join(["?"] * len(insertable))
-						conn.execute(
-							f"INSERT INTO products ({column_clause}) VALUES ({placeholder_clause})",
-							list(insertable.values()),
-						)
-					inserted += 1
+        if dry_run:
+            conn.rollback()
 
-		if dry_run:
-			conn.rollback()
-		else:
-			conn.commit()
-
-		total = conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM products")
+            total = cur.fetchone()[0]
+        
 		mode = "DRY-RUN" if dry_run else "APPLIED"
 		print(f"Seed completed ({mode}).")
 		print(f"Inserted: {inserted}")
@@ -288,43 +324,38 @@ def seed_products(db_path, csv_path, replace_existing=True, truncate=False, dry_
 
 
 def parse_args():
-	parser = argparse.ArgumentParser(
-		description="Seed the products table from sambast_inventory_list_v2.csv"
-	)
-	parser.add_argument(
-		"--db",
-		default=str(DEFAULT_DB_PATH),
-		help="Path to the SQLite database file (default: database.db)",
-	)
-	parser.add_argument(
-		"--csv",
-		default=str(DEFAULT_CSV_PATH),
-		help="Path to the source CSV file (default: sambast_inventory_list_v2.csv)",
-	)
-	parser.add_argument(
-		"--truncate",
-		action="store_true",
-		help="Delete existing products before seeding",
-	)
-	parser.add_argument(
-		"--skip-existing",
-		action="store_true",
-		help="Do not update products that already exist by name",
-	)
-	parser.add_argument(
-		"--dry-run",
-		action="store_true",
-		help="Preview seeding result without writing to the database",
-	)
-	return parser.parse_args()
+    parser = argparse.ArgumentParser(
+        description="Seed the products table from sambast_inventory_list_v2.csv"
+    )
+    parser.add_argument(
+        "--csv",
+        default=str(DEFAULT_CSV_PATH),
+        help="Path to the source CSV file (default: sambast_inventory_list_v2.csv)",
+    )
+    parser.add_argument(
+        "--truncate",
+        action="store_true",
+        help="Delete existing products before seeding",
+    )
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Do not update products that already exist by name",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview seeding result without writing to the database",
+    )
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
-	args = parse_args()
-	seed_products(
-		db_path=Path(args.db),
-		csv_path=Path(args.csv),
-		replace_existing=not args.skip_existing,
-		truncate=args.truncate,
-		dry_run=args.dry_run,
-	)
+    args = parse_args()
+    seed_products(
+        database_url=DATABASE_URL,
+        csv_path=Path(args.csv),
+        replace_existing=not args.skip_existing,
+        truncate=args.truncate,
+        dry_run=args.dry_run,
+    )

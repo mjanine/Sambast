@@ -1,4 +1,5 @@
-import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import os
 import json
 import re
@@ -22,6 +23,7 @@ from reportlab.lib.units import inch
 from io import BytesIO
 import csv
 import requests
+from db_pg import get_db, close_db
 
 # --- AI SETUP ---
 load_dotenv() # Loads the .env file
@@ -37,8 +39,8 @@ else:
 
 # --- FLASK SETUP ---
 app = Flask(__name__)
-app.secret_key = 'dev_key_for_session_management' 
-DATABASE = 'database.db'
+app.secret_key = 'dev_key_for_session_management'
+app.teardown_appcontext(close_db)
 
 # --- AI REQUEST GUARDRAILS ---
 AI_CACHE = {}
@@ -215,7 +217,7 @@ def _build_order_email_payload(db, order_id, status_override=None, cancellation_
                u.name AS customer_name, u.email AS customer_email
         FROM orders o
         LEFT JOIN users u ON o.user_id = u.user_id
-        WHERE o.order_id = ?
+        WHERE o.order_id = %s
     ''', (order_id,)).fetchone()
 
     if not order_row:
@@ -233,7 +235,7 @@ def _build_order_email_payload(db, order_id, status_override=None, cancellation_
             p.name AS product_name
         FROM order_items oi
         LEFT JOIN products p ON p.product_id = oi.product_id
-        WHERE oi.order_id = ?
+        WHERE oi.order_id = %s
         ORDER BY oi.item_id ASC
     ''', (order_id,)).fetchall()
 
@@ -343,7 +345,7 @@ def _issue_user_registration_otp(db, user_id, recipient_email, is_resend=False):
     else:
         session['pending_otp_resend_count'] = 0
 
-    db.execute('UPDATE users SET otp_code = ? WHERE user_id = ?', (otp_hash, user_id))
+    db.execute('UPDATE users SET otp_code = %s WHERE user_id = %s', (otp_hash, user_id))
     return True, None, None
 
 def _pending_registration_masked_email(db):
@@ -355,7 +357,7 @@ def _pending_registration_masked_email(db):
     if not pending_user_id:
         return 'your registered email'
 
-    user = db.execute('SELECT email FROM users WHERE user_id = ?', (pending_user_id,)).fetchone()
+    user = db.execute('SELECT email FROM users WHERE user_id = %s', (pending_user_id,)).fetchone()
     if not user or not user['email']:
         return 'your registered email'
 
@@ -366,7 +368,7 @@ def _validate_email_format(email_text):
     return re.fullmatch(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email_text or '') is not None
 
 def _sql_placeholders(values):
-    return ', '.join(['?'] * len(values))
+    return ', '.join(['%s'] * len(values))
 
 def get_log_category(action_text):
     """
@@ -573,116 +575,111 @@ def _safe_json_loads(text):
     return json.loads(fragment)
 
 # --- DATABASE UTILITIES ---
-
-def get_db():
-    db = getattr(g, '_database', None)
-    if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
-        # CRITICAL: This line enables Foreign Key enforcement in SQLite
-        db.execute("PRAGMA foreign_keys = ON")
-        db.row_factory = sqlite3.Row
-        
-        # Run migrations on database connection
-        _run_migrations(db)
-    return db
+# get_db() is now imported from db_pg module
+# Close connection hook is registered above: app.teardown_appcontext(close_db)
 
 def _run_migrations(db):
-    """Apply any necessary database migrations and backfill data."""
+    """Apply any necessary database migrations and backfill data for PostgreSQL."""
     try:
         cursor = db.cursor()
         
-        # Migration 1: Check if category column exists in audit_logs table
-        cursor.execute("PRAGMA table_info(audit_logs)")
-        columns = [column[1] for column in cursor.fetchall()]
+        # Helper function to check if column exists in PostgreSQL
+        def column_exists(table_name, column_name):
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = %s AND column_name = %s
+                )
+            """, (table_name, column_name))
+            return cursor.fetchone()[0]
         
-        if 'category' not in columns:
+        # Migration: Add missing columns to audit_logs
+        if not column_exists('audit_logs', 'category'):
             cursor.execute("ALTER TABLE audit_logs ADD COLUMN category TEXT DEFAULT 'System Actions'")
             db.commit()
             print("Migration: Added category column to audit_logs table.")
-
-        # Migration 1b: Ensure products.unit exists for stock unit display
-        cursor.execute("PRAGMA table_info(products)")
-        product_columns = [column[1] for column in cursor.fetchall()]
-        if product_columns and 'unit' not in product_columns:
+        
+        # Migration: Add missing columns to products
+        if not column_exists('products', 'unit'):
             cursor.execute("ALTER TABLE products ADD COLUMN unit TEXT DEFAULT 'pcs'")
             db.commit()
             print("Migration: Added unit column to products table.")
-        if product_columns and 'is_archived' not in product_columns:
+        if not column_exists('products', 'is_archived'):
             cursor.execute("ALTER TABLE products ADD COLUMN is_archived INTEGER DEFAULT 0")
             db.commit()
             print("Migration: Added is_archived column to products table.")
-        if product_columns and 'archived_at' not in product_columns:
+        if not column_exists('products', 'archived_at'):
             cursor.execute("ALTER TABLE products ADD COLUMN archived_at TIMESTAMP")
             db.commit()
             print("Migration: Added archived_at column to products table.")
-        if product_columns and 'unit_options_json' not in product_columns:
+        if not column_exists('products', 'unit_options_json'):
             cursor.execute("ALTER TABLE products ADD COLUMN unit_options_json TEXT DEFAULT '[]'")
             db.commit()
             print("Migration: Added unit_options_json column to products table.")
-        if product_columns and 'discount_json' not in product_columns:
+        if not column_exists('products', 'discount_json'):
             cursor.execute("ALTER TABLE products ADD COLUMN discount_json TEXT DEFAULT '[]'")
             db.commit()
             print("Migration: Added discount_json column to products table.")
-
-        # Migration 1c: Ensure order_items unit transaction columns exist
-        cursor.execute("PRAGMA table_info(order_items)")
-        order_item_columns = [column[1] for column in cursor.fetchall()]
-        if order_item_columns and 'selected_unit' not in order_item_columns:
+        
+        # Migration: Add missing columns to order_items
+        if not column_exists('order_items', 'selected_unit'):
             cursor.execute("ALTER TABLE order_items ADD COLUMN selected_unit TEXT DEFAULT '1 pc'")
             db.commit()
             print("Migration: Added selected_unit column to order_items table.")
-        if order_item_columns and 'unit_multiplier' not in order_item_columns:
+        if not column_exists('order_items', 'unit_multiplier'):
             cursor.execute("ALTER TABLE order_items ADD COLUMN unit_multiplier REAL DEFAULT 1")
             db.commit()
             print("Migration: Added unit_multiplier column to order_items table.")
-        if order_item_columns and 'base_price_at_time' not in order_item_columns:
+        if not column_exists('order_items', 'base_price_at_time'):
             cursor.execute("ALTER TABLE order_items ADD COLUMN base_price_at_time REAL")
             db.commit()
             print("Migration: Added base_price_at_time column to order_items table.")
-        if order_item_columns and 'discount_amount_at_time' not in order_item_columns:
+        if not column_exists('order_items', 'discount_amount_at_time'):
             cursor.execute("ALTER TABLE order_items ADD COLUMN discount_amount_at_time REAL DEFAULT 0")
             db.commit()
             print("Migration: Added discount_amount_at_time column to order_items table.")
-
-        # Migration 1f: Ensure orders.cancellation_reason exists for cancel feedback loop
-        cursor.execute("PRAGMA table_info(orders)")
-        order_columns = [column[1] for column in cursor.fetchall()]
-        if order_columns and 'cancellation_reason' not in order_columns:
+        
+        # Migration: Add missing columns to orders
+        if not column_exists('orders', 'cancellation_reason'):
             cursor.execute("ALTER TABLE orders ADD COLUMN cancellation_reason TEXT")
             db.commit()
             print("Migration: Added cancellation_reason column to orders table.")
-
-            # Migration 1e: Ensure products.stock_quantity exists for inventory tracking
-            cursor.execute("PRAGMA table_info(products)")
-            product_columns = [column[1] for column in cursor.fetchall()]
-            if product_columns and 'stock_quantity' not in product_columns:
-                cursor.execute("ALTER TABLE products ADD COLUMN stock_quantity INTEGER DEFAULT 0")
-                db.commit()
-                print("Migration: Added stock_quantity column to products table.")
-
-        # Migration 1d: Ensure categories table exists and is backfilled from products
-        cursor.execute('''
+        
+        if not column_exists('products', 'stock_quantity'):
+            cursor.execute("ALTER TABLE products ADD COLUMN stock_quantity INTEGER DEFAULT 0")
+            db.commit()
+            print("Migration: Added stock_quantity column to products table.")
+        
+        # Migration: Ensure categories table exists and is backfilled from products
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS categories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 name TEXT UNIQUE NOT NULL,
                 unit_options_json TEXT DEFAULT '[]'
             )
-        ''')
-        cursor.execute("PRAGMA table_info(categories)")
-        category_columns = [column[1] for column in cursor.fetchall()]
-        if category_columns and 'unit_options_json' not in category_columns:
+        """)
+        
+        if not column_exists('categories', 'unit_options_json'):
             cursor.execute("ALTER TABLE categories ADD COLUMN unit_options_json TEXT DEFAULT '[]'")
             db.commit()
             print("Migration: Added unit_options_json column to categories table.")
-        cursor.execute("SELECT DISTINCT TRIM(category) AS category_name FROM products WHERE category IS NOT NULL AND TRIM(category) != ''")
+        
+        # Backfill categories from products
+        cursor.execute("""
+            SELECT DISTINCT TRIM(category) AS category_name FROM products 
+            WHERE category IS NOT NULL AND TRIM(category) != ''
+        """)
         existing_categories = cursor.fetchall()
         for row in existing_categories:
             category_name = (row[0] or '').strip()
             if category_name:
-                cursor.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", (category_name,))
+                cursor.execute("""
+                    INSERT INTO categories (name) VALUES (%s)
+                    ON CONFLICT (name) DO NOTHING
+                """, (category_name,))
         db.commit()
         
-        # Migration 2: Backfill existing logs with correct categories
+        # Migration: Backfill existing logs with correct categories
         cursor.execute("SELECT COUNT(*) FROM audit_logs WHERE category IS NULL OR category = ''")
         null_count = cursor.fetchone()[0]
         
@@ -693,31 +690,13 @@ def _run_migrations(db):
             
             for log_id, action_text in logs_to_update:
                 category = get_log_category(action_text)
-                cursor.execute("UPDATE audit_logs SET category = ? WHERE log_id = ?", (category, log_id))
+                cursor.execute("UPDATE audit_logs SET category = %s WHERE log_id = %s", (category, log_id))
             
             db.commit()
             print(f"Migration: Successfully backfilled {null_count} audit logs with categories.")
         
-        # Migration 3: Correct any misclassified logs (optional - recategorize all)
-        # Uncomment if you want to recategorize ALL logs on startup
-        # cursor.execute("SELECT log_id, action_text FROM audit_logs")
-        # all_logs = cursor.fetchall()
-        # updated = 0
-        # for log_id, action_text in all_logs:
-        #     new_category = get_log_category(action_text)
-        #     cursor.execute("UPDATE audit_logs SET category = ? WHERE log_id = ?", (new_category, log_id))
-        #     updated += 1
-        # db.commit()
-        # print(f"Migration: Recategorized {updated} audit logs.")
-        
     except Exception as e:
         print(f"Migration error: {e}")
-
-@app.teardown_appcontext
-def close_connection(exception):
-    db = getattr(g, '_database', None)
-    if db is not None:
-        db.close()
 
 def init_db():
     """Initializes tables and seeds test data for Sambast Admin."""
@@ -725,9 +704,9 @@ def init_db():
         db = get_db()
         cursor = db.cursor()
 
-        # Core Tables
+        # Core Tables - PostgreSQL syntax
         cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            user_id SERIAL PRIMARY KEY, 
             email TEXT UNIQUE, 
             name TEXT, 
             contact_no TEXT UNIQUE NOT NULL,
@@ -736,7 +715,7 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         
         cursor.execute('''CREATE TABLE IF NOT EXISTS products (
-            product_id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            product_id SERIAL PRIMARY KEY, 
             name TEXT NOT NULL, 
             category TEXT, 
             unit TEXT DEFAULT 'pcs',
@@ -750,23 +729,23 @@ def init_db():
             archived_at TIMESTAMP)''')
 
         cursor.execute('''CREATE TABLE IF NOT EXISTS categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT UNIQUE NOT NULL,
             unit_options_json TEXT DEFAULT '[]'
         )''')
         
         cursor.execute('''CREATE TABLE IF NOT EXISTS orders (
-            order_id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            order_id SERIAL PRIMARY KEY, 
             order_no TEXT UNIQUE NOT NULL, 
             user_id INTEGER, 
             total_price REAL, 
-            status TEXT DEFAULT "Pending", 
+            status TEXT DEFAULT 'Pending', 
             cancellation_reason TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, 
             FOREIGN KEY (user_id) REFERENCES users (user_id))''')
         
         cursor.execute('''CREATE TABLE IF NOT EXISTS order_items (
-            item_id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            item_id SERIAL PRIMARY KEY, 
             order_id INTEGER, 
             product_id INTEGER, 
             quantity INTEGER, 
@@ -779,13 +758,13 @@ def init_db():
             FOREIGN KEY (product_id) REFERENCES products (product_id))''')
         
         cursor.execute('''CREATE TABLE IF NOT EXISTS admin (
-            admin_id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            admin_id SERIAL PRIMARY KEY, 
             username TEXT UNIQUE NOT NULL, 
             email TEXT UNIQUE, 
             password_hash TEXT NOT NULL)''')
         
         cursor.execute('''CREATE TABLE IF NOT EXISTS audit_logs (
-            log_id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            log_id SERIAL PRIMARY KEY, 
             admin_id INTEGER, 
             action_text TEXT NOT NULL, 
             category TEXT DEFAULT 'System Actions', 
@@ -796,7 +775,7 @@ def init_db():
         cursor.execute("SELECT COUNT(*) FROM admin")
         if cursor.fetchone()[0] == 0:
             hashed_pw = generate_password_hash("admin123")
-            cursor.execute("INSERT INTO admin (username, email, password_hash) VALUES (?, ?, ?)", 
+            cursor.execute("INSERT INTO admin (username, email, password_hash) VALUES (%s, %s, %s)", 
                            ("REY", "admin@sambast.com", hashed_pw))
 
         db.commit()
@@ -814,7 +793,7 @@ def calculate_pet_lifestyle(user_id, current_order_count=None):
                 return
 
             # Check if user has a pet profile
-            pet = db.execute('SELECT id FROM pets WHERE user_id = ?', (user_id,)).fetchone()
+            pet = db.execute('SELECT id FROM pets WHERE user_id = %s', (user_id,)).fetchone()
             if not pet:
                 return # No pet to classify
 
@@ -824,7 +803,7 @@ def calculate_pet_lifestyle(user_id, current_order_count=None):
                 FROM order_items oi
                 JOIN orders o ON oi.order_id = o.order_id
                 JOIN products p ON oi.product_id = p.product_id
-                WHERE o.user_id = ? AND o.status != 'Cancelled'
+                WHERE o.user_id = %s AND o.status != 'Cancelled'
                 ORDER BY o.created_at DESC
                 LIMIT 10
             ''', (user_id,)).fetchall()
@@ -853,7 +832,7 @@ def calculate_pet_lifestyle(user_id, current_order_count=None):
             
             valid_categories = ['Active', 'Indoor', 'Senior', 'Sensitive']
             if classification in valid_categories:
-                db.execute('UPDATE pets SET lifestyle_classification = ? WHERE user_id = ?', (classification, user_id))
+                db.execute('UPDATE pets SET lifestyle_classification = %s WHERE user_id = %s', (classification, user_id))
                 db.commit()
 
                 effective_order_count = (
@@ -879,7 +858,7 @@ def get_inventory_context():
             SELECT name, category, price, description
             FROM products
             WHERE stock_status > 0
-              AND IFNULL(is_archived, 0) = 0
+              AND COALESCE(is_archived, 0) = 0
         ''').fetchall()
         if not products:
             return "No products currently available."
@@ -921,14 +900,14 @@ def _inventory_signature(db):
     inventory_stats = db.execute('''
         SELECT
             COUNT(*) AS product_count,
-            IFNULL(SUM(stock_status), 0) AS stock_total,
-            IFNULL(MAX(product_id), 0) AS latest_product_id
+            COALESCE(SUM(stock_status), 0) AS stock_total,
+            COALESCE(MAX(product_id), 0) AS latest_product_id
         FROM products
     ''').fetchone()
     order_stats = db.execute('''
         SELECT
-            IFNULL(COUNT(*), 0) AS order_count,
-            IFNULL(MAX(created_at), '') AS latest_order_at
+            COALESCE(COUNT(*), 0) AS order_count,
+            COALESCE(MAX(created_at), '') AS latest_order_at
         FROM orders
         WHERE status != 'Cancelled'
     ''').fetchone()
@@ -946,7 +925,7 @@ def _build_inventory_insights_fallback(db):
         SELECT name, stock_status
         FROM products
                 WHERE stock_status < 10
-                    AND IFNULL(is_archived, 0) = 0
+                    AND COALESCE(is_archived, 0) = 0
         ORDER BY stock_status ASC, name ASC
         LIMIT 6
     ''').fetchall()
@@ -1031,15 +1010,15 @@ def _build_inventory_forecast_fallback(db):
         SELECT
             p.name,
             p.stock_status,
-            IFNULL(SUM(CASE WHEN o.status != 'Cancelled' THEN oi.quantity ELSE 0 END), 0) AS total_sold,
-            IFNULL(SUM(CASE
+            COALESCE(SUM(CASE WHEN o.status != 'Cancelled' THEN oi.quantity ELSE 0 END), 0) AS total_sold,
+            COALESCE(SUM(CASE
                 WHEN o.status != 'Cancelled'
-                 AND o.created_at >= datetime('now', '-30 day')
+                 AND o.created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'
                 THEN oi.quantity ELSE 0 END), 0) AS sold_last_30_days
         FROM products p
         LEFT JOIN order_items oi ON p.product_id = oi.product_id
         LEFT JOIN orders o ON oi.order_id = o.order_id
-        WHERE IFNULL(p.is_archived, 0) = 0
+        WHERE COALESCE(p.is_archived, 0) = 0
         GROUP BY p.product_id, p.name, p.stock_status
         ORDER BY p.name ASC
     ''').fetchall()
@@ -1115,7 +1094,7 @@ def _get_business_summary_snapshot(db):
     order_count = int(orders_row['count']) if orders_row and orders_row['count'] else 0
 
     top_seller_rows = db.execute(f'''
-        SELECT p.name, IFNULL(SUM(oi.quantity), 0) AS count
+        SELECT p.name, COALESCE(SUM(oi.quantity), 0) AS count
         FROM order_items oi
         JOIN orders o ON oi.order_id = o.order_id
         JOIN products p ON oi.product_id = p.product_id
@@ -1133,7 +1112,7 @@ def _get_business_summary_snapshot(db):
     ]
 
     slow_mover_rows = db.execute(f'''
-        SELECT p.name, IFNULL(SUM(CASE WHEN o.status IN ({fulfilled_placeholders}) THEN oi.quantity ELSE 0 END), 0) AS count
+        SELECT p.name, COALESCE(SUM(CASE WHEN o.status IN ({fulfilled_placeholders}) THEN oi.quantity ELSE 0 END), 0) AS count
         FROM products p
         LEFT JOIN order_items oi ON p.product_id = oi.product_id
         LEFT JOIN orders o ON oi.order_id = o.order_id
@@ -1150,7 +1129,7 @@ def _get_business_summary_snapshot(db):
     ]
 
     low_stock_rows = db.execute(
-        "SELECT name, stock_status AS stock FROM products WHERE stock_status <= ? AND IFNULL(is_archived, 0) = 0 ORDER BY stock_status ASC, name ASC",
+        "SELECT name, stock_status AS stock FROM products WHERE stock_status <= %s AND COALESCE(is_archived, 0) = 0 ORDER BY stock_status ASC, name ASC",
         (LOW_STOCK_WATCH_MAX,)
     ).fetchall()
     low_stock = [
@@ -1409,8 +1388,8 @@ def _merge_items_by_key(default_items, incoming_items, key_name):
 def _analytics_signature(db):
     order_stats = db.execute('''
         SELECT
-            IFNULL(COUNT(*), 0) AS total_orders,
-            IFNULL(MAX(created_at), '') AS latest_order_at
+            COALESCE(COUNT(*), 0) AS total_orders,
+            COALESCE(MAX(created_at), '') AS latest_order_at
         FROM orders
     ''').fetchone()
 
@@ -1429,7 +1408,7 @@ def _analytics_signature(db):
     product_stats = db.execute('''
         SELECT
             COUNT(*) AS product_count,
-            IFNULL(MAX(product_id), 0) AS latest_product_id
+            COALESCE(MAX(product_id), 0) AS latest_product_id
         FROM products
     ''').fetchone()
 
@@ -1447,14 +1426,14 @@ def _get_least_selling_products_data(db, limit=5):
         SELECT
             p.product_id,
             p.name,
-            IFNULL(SUM(CASE WHEN o.status IN ({fulfilled_placeholders}) THEN oi.quantity ELSE 0 END), 0) AS count,
-            IFNULL(SUM(CASE WHEN o.status IN ({fulfilled_placeholders}) THEN oi.quantity * oi.price_at_time ELSE 0 END), 0) AS revenue
+            COALESCE(SUM(CASE WHEN o.status IN ({fulfilled_placeholders}) THEN oi.quantity ELSE 0 END), 0) AS count,
+            COALESCE(SUM(CASE WHEN o.status IN ({fulfilled_placeholders}) THEN oi.quantity * oi.price_at_time ELSE 0 END), 0) AS revenue
         FROM products p
         LEFT JOIN order_items oi ON p.product_id = oi.product_id
         LEFT JOIN orders o ON oi.order_id = o.order_id
         GROUP BY p.product_id
         ORDER BY count ASC, revenue ASC, p.name ASC
-        LIMIT ?
+        LIMIT %s
     ''', ANALYTICS_FULFILLED_STATUSES + ANALYTICS_FULFILLED_STATUSES + (int(limit),)).fetchall()
 
     return [
@@ -1473,16 +1452,19 @@ def _get_revenue_trend_data(db, daily_points=14, weekly_points=12):
     daily_points = max(1, int(daily_points))
     weekly_points = max(1, int(weekly_points))
 
+    daily_start = datetime.now().date() - timedelta(days=daily_points - 1)
+    weekly_start = datetime.now().date() - timedelta(days=(weekly_points * 7) - 1)
+
     daily_rows = db.execute(f'''
         SELECT
             DATE(created_at) AS period,
-            IFNULL(SUM(total_price), 0) AS revenue
+            COALESCE(SUM(total_price), 0) AS revenue
         FROM orders
         WHERE status IN ({fulfilled_placeholders})
-          AND DATE(created_at) >= DATE('now', ?)
+          AND DATE(created_at) >= %s
         GROUP BY DATE(created_at)
         ORDER BY DATE(created_at) ASC
-    ''', ANALYTICS_FULFILLED_STATUSES + (f'-{daily_points - 1} day',)).fetchall()
+    ''', ANALYTICS_FULFILLED_STATUSES + (daily_start,)).fetchall()
 
     revenue_by_day = {
         str(row['period']): float(row['revenue'] or 0)
@@ -1491,7 +1473,7 @@ def _get_revenue_trend_data(db, daily_points=14, weekly_points=12):
     }
 
     daily_data = []
-    start_day = datetime.now().date() - timedelta(days=daily_points - 1)
+    start_day = daily_start
     for day_offset in range(daily_points):
         day_key = (start_day + timedelta(days=day_offset)).isoformat()
         daily_data.append({
@@ -1501,14 +1483,14 @@ def _get_revenue_trend_data(db, daily_points=14, weekly_points=12):
 
     weekly_rows = db.execute(f'''
         SELECT
-            strftime('%Y-W%W', created_at) AS period,
-            IFNULL(SUM(total_price), 0) AS revenue
+                        TO_CHAR(DATE_TRUNC('week', created_at), 'IYYY-"W"IW') AS period,
+            COALESCE(SUM(total_price), 0) AS revenue
         FROM orders
         WHERE status IN ({fulfilled_placeholders})
-          AND DATE(created_at) >= DATE('now', ?)
-        GROUP BY strftime('%Y-W%W', created_at)
+                    AND DATE(created_at) >= %s
+                GROUP BY TO_CHAR(DATE_TRUNC('week', created_at), 'IYYY-"W"IW')
         ORDER BY period ASC
-    ''', ANALYTICS_FULFILLED_STATUSES + (f'-{(weekly_points * 7) - 1} day',)).fetchall()
+        ''', ANALYTICS_FULFILLED_STATUSES + (weekly_start,)).fetchall()
 
     weekly_data = [
         {
@@ -1549,8 +1531,8 @@ def _get_category_performance_data(db):
         SELECT
             COALESCE(NULLIF(TRIM(p.category), ''), 'Uncategorized') AS category,
             COUNT(DISTINCT p.product_id) AS product_count,
-            IFNULL(SUM(CASE WHEN o.status IN ({fulfilled_placeholders}) THEN oi.quantity ELSE 0 END), 0) AS quantity_sold,
-            IFNULL(SUM(CASE WHEN o.status IN ({fulfilled_placeholders}) THEN oi.quantity * oi.price_at_time ELSE 0 END), 0) AS revenue
+            COALESCE(SUM(CASE WHEN o.status IN ({fulfilled_placeholders}) THEN oi.quantity ELSE 0 END), 0) AS quantity_sold,
+            COALESCE(SUM(CASE WHEN o.status IN ({fulfilled_placeholders}) THEN oi.quantity * oi.price_at_time ELSE 0 END), 0) AS revenue
         FROM products p
         LEFT JOIN order_items oi ON p.product_id = oi.product_id
         LEFT JOIN orders o ON oi.order_id = o.order_id
@@ -1573,7 +1555,7 @@ def _get_deterministic_analytics_bundle(db):
     active_placeholders = _sql_placeholders(ANALYTICS_ACTIVE_STATUSES)
 
     totals_row = db.execute(
-        f"SELECT IFNULL(SUM(total_price), 0) AS revenue, COUNT(*) AS completed_orders FROM orders WHERE status IN ({fulfilled_placeholders})",
+        f"SELECT COALESCE(SUM(total_price), 0) AS revenue, COUNT(*) AS completed_orders FROM orders WHERE status IN ({fulfilled_placeholders})",
         ANALYTICS_FULFILLED_STATUSES
     ).fetchone()
     active_row = db.execute(
@@ -2037,7 +2019,7 @@ def _ensure_lifestyle_tracker_table(db):
 
 def _get_user_completed_order_count(db, user_id):
     row = db.execute(
-        "SELECT COUNT(*) AS cnt FROM orders WHERE user_id = ? AND status != 'Cancelled'",
+        "SELECT COUNT(*) AS cnt FROM orders WHERE user_id = %s AND status != 'Cancelled'",
         (user_id,)
     ).fetchone()
     return int(row['cnt']) if row and row['cnt'] is not None else 0
@@ -2050,7 +2032,7 @@ def _should_trigger_lifestyle_refresh(db, user_id, min_new_orders=3, min_total_o
         return False, total_orders
 
     tracker = db.execute(
-        "SELECT last_order_count FROM lifestyle_ai_runs WHERE user_id = ?",
+        "SELECT last_order_count FROM lifestyle_ai_runs WHERE user_id = %s",
         (user_id,)
     ).fetchone()
 
@@ -2058,7 +2040,7 @@ def _should_trigger_lifestyle_refresh(db, user_id, min_new_orders=3, min_total_o
 
     if not tracker:
         db.execute(
-            "INSERT INTO lifestyle_ai_runs (user_id, last_order_count) VALUES (?, ?)",
+            "INSERT INTO lifestyle_ai_runs (user_id, last_order_count) VALUES (%s, %s)",
             (user_id, 0)
         )
         db.commit()
@@ -2068,13 +2050,13 @@ def _should_trigger_lifestyle_refresh(db, user_id, min_new_orders=3, min_total_o
 def _mark_lifestyle_refresh_complete(db, user_id, current_order_count):
     _ensure_lifestyle_tracker_table(db)
     update_cursor = db.execute(
-        "UPDATE lifestyle_ai_runs SET last_order_count = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+        "UPDATE lifestyle_ai_runs SET last_order_count = %s, updated_at = CURRENT_TIMESTAMP WHERE user_id = %s",
         (current_order_count, user_id)
     )
 
     if update_cursor.rowcount == 0:
         db.execute(
-            "INSERT INTO lifestyle_ai_runs (user_id, last_order_count) VALUES (?, ?)",
+            "INSERT INTO lifestyle_ai_runs (user_id, last_order_count) VALUES (%s, %s)",
             (user_id, current_order_count)
         )
     db.commit()
@@ -2082,21 +2064,42 @@ def _mark_lifestyle_refresh_complete(db, user_id, current_order_count):
 def ensure_startup_schema_guard():
     """Ensures phase-6 schema artifacts exist; triggers migration if missing."""
     required_product_columns = {"purpose", "target_species", "tags"}
+    with app.app_context():
+        db = get_db()
+        cursor = db.cursor()
 
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
-    try:
-        pets_exists = cursor.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'pets'"
-        ).fetchone() is not None
-
-        products_exists = cursor.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'products'"
-        ).fetchone() is not None
-
+        pets_exists = False
+        products_exists = False
         product_columns = set()
+
+        cursor.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'pets'
+            )
+            """
+        )
+        pets_exists = cursor.fetchone()[0]
+
+        cursor.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'products'
+            )
+            """
+        )
+        products_exists = cursor.fetchone()[0]
+
         if products_exists:
-            product_columns = {row[1] for row in cursor.execute("PRAGMA table_info(products)").fetchall()}
+            cursor.execute(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'products'
+                """
+            )
+            product_columns = {row[0] for row in cursor.fetchall()}
 
         missing_columns = required_product_columns - product_columns
         if (not pets_exists) or missing_columns:
@@ -2105,9 +2108,7 @@ def ensure_startup_schema_guard():
                 f"Missing pets table: {not pets_exists}. Missing product columns: {sorted(missing_columns)}"
             )
             from migrate_db import run_migration
-            run_migration(DATABASE)
-    finally:
-        conn.close()
+            run_migration()
 
 VET_DISCLAIMER = "I am an AI, not a veterinarian. Please consult a vet for medical advice."
 
@@ -2164,7 +2165,7 @@ def _fallback_recommendations(db, cart_items, limit=2, exclude_ids=None):
 
     preferred_categories = []
     if cart_product_ids:
-        placeholders = ', '.join(['?'] * len(cart_product_ids))
+        placeholders = ', '.join(['%s'] * len(cart_product_ids))
         category_rows = db.execute(
             f"SELECT DISTINCT category FROM products WHERE product_id IN ({placeholders}) AND category IS NOT NULL",
             tuple(cart_product_ids)
@@ -2184,7 +2185,7 @@ def _fallback_recommendations(db, cart_items, limit=2, exclude_ids=None):
                 break
 
     if preferred_categories:
-        placeholders = ', '.join(['?'] * len(preferred_categories))
+        placeholders = ', '.join(['%s'] * len(preferred_categories))
         rows = db.execute(
             f'''
                 SELECT
@@ -2195,11 +2196,11 @@ def _fallback_recommendations(db, cart_items, limit=2, exclude_ids=None):
                     p.description,
                     p.image_filename,
                     p.stock_status,
-                    IFNULL(SUM(oi.quantity), 0) AS sold_qty
+                    COALESCE(SUM(oi.quantity), 0) AS sold_qty
                 FROM products p
                 LEFT JOIN order_items oi ON p.product_id = oi.product_id
                 WHERE p.stock_status > 0
-                                    AND IFNULL(p.is_archived, 0) = 0
+                                    AND COALESCE(p.is_archived, 0) = 0
                   AND p.category IN ({placeholders})
                 GROUP BY
                     p.product_id,
@@ -2225,11 +2226,11 @@ def _fallback_recommendations(db, cart_items, limit=2, exclude_ids=None):
                 p.description,
                 p.image_filename,
                 p.stock_status,
-                IFNULL(SUM(oi.quantity), 0) AS sold_qty
+                COALESCE(SUM(oi.quantity), 0) AS sold_qty
             FROM products p
             LEFT JOIN order_items oi ON p.product_id = oi.product_id
             WHERE p.stock_status > 0
-                            AND IFNULL(p.is_archived, 0) = 0
+                            AND COALESCE(p.is_archived, 0) = 0
             GROUP BY
                 p.product_id,
                 p.name,
@@ -2303,17 +2304,17 @@ def _build_budget_bundle(db, budget_amount, user_message):
         preferred_categories.append('Supplies')
 
     if preferred_categories:
-        placeholders = ', '.join(['?'] * len(preferred_categories))
+        placeholders = ', '.join(['%s'] * len(preferred_categories))
         candidate_rows = db.execute(
             f'''
                 SELECT
                     p.name,
                     p.price,
-                    IFNULL(SUM(oi.quantity), 0) AS sold_qty
+                    COALESCE(SUM(oi.quantity), 0) AS sold_qty
                 FROM products p
                 LEFT JOIN order_items oi ON p.product_id = oi.product_id
                 WHERE p.stock_status > 0
-                                    AND IFNULL(p.is_archived, 0) = 0
+                                    AND COALESCE(p.is_archived, 0) = 0
                   AND p.category IN ({placeholders})
                 GROUP BY p.product_id, p.name, p.price
                 ORDER BY sold_qty DESC, p.price ASC, p.name ASC
@@ -2328,11 +2329,11 @@ def _build_budget_bundle(db, budget_amount, user_message):
             SELECT
                 p.name,
                 p.price,
-                IFNULL(SUM(oi.quantity), 0) AS sold_qty
+                COALESCE(SUM(oi.quantity), 0) AS sold_qty
             FROM products p
             LEFT JOIN order_items oi ON p.product_id = oi.product_id
             WHERE p.stock_status > 0
-                            AND IFNULL(p.is_archived, 0) = 0
+                            AND COALESCE(p.is_archived, 0) = 0
             GROUP BY p.product_id, p.name, p.price
             ORDER BY sold_qty DESC, p.price ASC, p.name ASC
         ''').fetchall()
@@ -2512,7 +2513,7 @@ def _get_category_unit_options(db, category_name):
         return []
 
     row = db.execute(
-        'SELECT unit_options_json FROM categories WHERE LOWER(name) = LOWER(?)',
+        'SELECT unit_options_json FROM categories WHERE LOWER(name) = LOWER(%s)',
         (normalized_name,)
     ).fetchone()
     if not row:
@@ -2731,7 +2732,7 @@ def admin_login():
     user_input = data.get('username')
     pass_input = data.get('password')
     db = get_db()
-    admin = db.execute('SELECT * FROM admin WHERE username = ?', (user_input,)).fetchone()
+    admin = db.execute('SELECT * FROM admin WHERE username = %s', (user_input,)).fetchone()
     
     if admin and check_password_hash(admin['password_hash'], pass_input):
         session.clear()
@@ -2762,7 +2763,7 @@ def admin_orders():
             SELECT orders.*, users.name AS customer_name
             FROM orders
             LEFT JOIN users ON orders.user_id = users.user_id
-            WHERE orders.status = ?
+            WHERE orders.status = %s
             ORDER BY orders.created_at DESC
         ''', (status_filter,)).fetchall()
     else:
@@ -2788,7 +2789,7 @@ def admin_orders():
                 p.name AS product_name
             FROM order_items oi
             LEFT JOIN products p ON p.product_id = oi.product_id
-            WHERE oi.order_id = ?
+            WHERE oi.order_id = %s
             ORDER BY oi.item_id ASC
         ''', (order['order_id'],)).fetchall()
 
@@ -2833,7 +2834,7 @@ def update_order_status(order_id):
     new_status = request.form.get('status')
     db = get_db()
     current_order = db.execute(
-        'SELECT status, user_id, order_no FROM orders WHERE order_id = ?',
+        'SELECT status, user_id, order_no FROM orders WHERE order_id = %s',
         (order_id,)
     ).fetchone()
     current_status = current_order['status'] if current_order else None
@@ -2842,7 +2843,7 @@ def update_order_status(order_id):
     if new_status == 'Completed' and current_order and current_status != 'Completed':
         # Fetch all items in this order
         order_items = db.execute(
-            'SELECT product_id, quantity, unit_multiplier FROM order_items WHERE order_id = ?',
+            'SELECT product_id, quantity, unit_multiplier FROM order_items WHERE order_id = %s',
             (order_id,)
         ).fetchall()
         
@@ -2860,20 +2861,20 @@ def update_order_status(order_id):
             db.execute(
                 '''UPDATE products
                    SET stock_status = CASE
-                           WHEN stock_status >= ? THEN stock_status - ?
+                           WHEN stock_status >= %s THEN stock_status - %s
                            ELSE 0
                        END,
                        stock_quantity = CASE
-                           WHEN stock_quantity >= ? THEN stock_quantity - ?
+                           WHEN stock_quantity >= %s THEN stock_quantity - %s
                            ELSE 0
                        END
-                   WHERE product_id = ?''',
+                   WHERE product_id = %s''',
                 (stock_deduction, stock_deduction, stock_deduction, stock_deduction, product_id)
             )
     
-    db.execute('UPDATE orders SET status = ? WHERE order_id = ?', (new_status, order_id))
+    db.execute('UPDATE orders SET status = %s WHERE order_id = %s', (new_status, order_id))
     action_text = f"Moved Order #{order_id} to {new_status}"
-    db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
+    db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (%s, %s, %s)', 
                (session['admin_id'], action_text, get_log_category(action_text)))
     db.commit()
 
@@ -2893,15 +2894,15 @@ def cancel_order(order_id):
     cancel_reason = (request.form.get('cancel_reason') or '').strip()
     db = get_db()
     order_row = db.execute(
-        'SELECT status FROM orders WHERE order_id = ?',
+        'SELECT status FROM orders WHERE order_id = %s',
         (order_id,)
     ).fetchone()
     db.execute(
-        'UPDATE orders SET status = "Cancelled", cancellation_reason = ? WHERE order_id = ?',
+        "UPDATE orders SET status = 'Cancelled', cancellation_reason = %s WHERE order_id = %s",
         (cancel_reason if cancel_reason else None, order_id)
     )
     action_text = f"Cancelled Order #{order_id}"
-    db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
+    db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (%s, %s, %s)', 
                (session['admin_id'], action_text, get_log_category(action_text)))
     db.commit()
 
@@ -2921,7 +2922,7 @@ def cancel_order(order_id):
 def admin_inventory():
     if 'admin_id' not in session: return redirect(url_for('admin_login_page'))
     db = get_db()
-    products = db.execute('SELECT * FROM products ORDER BY IFNULL(is_archived, 0) ASC, name ASC').fetchall()
+    products = db.execute('SELECT * FROM products ORDER BY COALESCE(is_archived, 0) ASC, name ASC').fetchall()
     raw_categories = db.execute('SELECT id, name, unit_options_json FROM categories ORDER BY name ASC').fetchall()
     categories = []
     for category in raw_categories:
@@ -2944,12 +2945,12 @@ def add_category():
 
     db = get_db()
     requested_options = _normalize_unit_options(payload.get('unit_options', []))
-    existing = db.execute('SELECT id, name FROM categories WHERE LOWER(name) = LOWER(?)', (category_name,)).fetchone()
+    existing = db.execute('SELECT id, name FROM categories WHERE LOWER(name) = LOWER(%s)', (category_name,)).fetchone()
     if existing:
         effective_options = requested_options or _get_category_unit_options(db, existing['name'])
         if requested_options:
             db.execute(
-                'UPDATE categories SET unit_options_json = ? WHERE id = ?',
+                'UPDATE categories SET unit_options_json = %s WHERE id = %s',
                 (json.dumps(requested_options), existing['id'])
             )
             db.commit()
@@ -2965,7 +2966,7 @@ def add_category():
 
     options_to_store = requested_options or _default_category_unit_options(category_name)
     cursor = db.execute(
-        'INSERT INTO categories (name, unit_options_json) VALUES (?, ?)',
+        'INSERT INTO categories (name, unit_options_json) VALUES (%s, %s)',
         (category_name, json.dumps(options_to_store))
     )
     db.commit()
@@ -2995,12 +2996,12 @@ def edit_category(category_id):
         unit_options = _default_category_unit_options(new_name)
 
     db = get_db()
-    category_row = db.execute('SELECT id, name FROM categories WHERE id = ?', (category_id,)).fetchone()
+    category_row = db.execute('SELECT id, name FROM categories WHERE id = %s', (category_id,)).fetchone()
     if not category_row:
         return jsonify({'success': False, 'message': 'Category not found.'}), 404
 
     conflict = db.execute(
-        'SELECT id FROM categories WHERE LOWER(name) = LOWER(?) AND id != ?',
+        'SELECT id FROM categories WHERE LOWER(name) = LOWER(%s) AND id != %s',
         (new_name, category_id)
     ).fetchone()
     if conflict:
@@ -3008,11 +3009,11 @@ def edit_category(category_id):
 
     old_name = category_row['name']
     db.execute(
-        'UPDATE categories SET name = ?, unit_options_json = ? WHERE id = ?',
+        'UPDATE categories SET name = %s, unit_options_json = %s WHERE id = %s',
         (new_name, json.dumps(unit_options), category_id)
     )
     db.execute(
-        'UPDATE products SET category = ? WHERE LOWER(category) = LOWER(?)',
+        'UPDATE products SET category = %s WHERE LOWER(category) = LOWER(%s)',
         (new_name, old_name)
     )
     db.commit()
@@ -3058,13 +3059,13 @@ def add_product():
         unit_options_json = json.dumps(parsed_unit_options)
     if category:
         db.execute(
-            'INSERT OR IGNORE INTO categories (name, unit_options_json) VALUES (?, ?)',
+            'INSERT INTO categories (name, unit_options_json) VALUES (%s, %s) ON CONFLICT (name) DO UPDATE SET unit_options_json = EXCLUDED.unit_options_json',
             (category, json.dumps(_default_category_unit_options(category)))
         )
     db.execute('''INSERT INTO products (name, category, unit, price, stock_status, image_filename, description, unit_options_json, discount_json) 
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''', (name, category, unit, price, stock_status, filename, description, unit_options_json, discount_json))
+                  VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)''', (name, category, unit, price, stock_status, filename, description, unit_options_json, discount_json))
     action_text = f"Added product: {name}"
-    db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
+    db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (%s, %s, %s)', 
                (session['admin_id'], action_text, get_log_category(action_text)))
     db.commit()
     flash(f"Product {name} added!")
@@ -3096,7 +3097,7 @@ def edit_product(product_id):
         unit_options_json = json.dumps(parsed_unit_options)
     if category:
         db.execute(
-            'INSERT OR IGNORE INTO categories (name, unit_options_json) VALUES (?, ?)',
+            'INSERT INTO categories (name, unit_options_json) VALUES (%s, %s) ON CONFLICT (name) DO UPDATE SET unit_options_json = EXCLUDED.unit_options_json',
             (category, json.dumps(_default_category_unit_options(category)))
         )
     
@@ -3105,14 +3106,14 @@ def edit_product(product_id):
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
         file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        db.execute('UPDATE products SET image_filename = ? WHERE product_id = ?', (filename, product_id))
+        db.execute('UPDATE products SET image_filename = %s WHERE product_id = %s', (filename, product_id))
     elif remove_image:
-        db.execute('UPDATE products SET image_filename = ? WHERE product_id = ?', ('', product_id))
+        db.execute('UPDATE products SET image_filename = %s WHERE product_id = %s', ('', product_id))
 
-    db.execute('''UPDATE products SET name=?, category=?, unit=?, price=?, description=?, stock_status=?, unit_options_json=?, discount_json=? 
-                  WHERE product_id = ?''', (name, category, unit, price, description, stock_status, unit_options_json, discount_json, product_id))
+    db.execute('''UPDATE products SET name=%s, category=%s, unit=%s, price=%s, description=%s, stock_status=%s, unit_options_json=%s, discount_json=%s 
+                  WHERE product_id = %s''', (name, category, unit, price, description, stock_status, unit_options_json, discount_json, product_id))
     action_text = f"Edited product ID: {product_id}"
-    db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
+    db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (%s, %s, %s)', 
                (session['admin_id'], action_text, get_log_category(action_text)))
     db.commit()
     return redirect(url_for('admin_inventory'))
@@ -3123,7 +3124,7 @@ def delete_product(product_id):
     db = get_db()
 
     product_row = db.execute(
-        'SELECT product_id, name, IFNULL(is_archived, 0) AS is_archived FROM products WHERE product_id = ?',
+        'SELECT product_id, name, COALESCE(is_archived, 0) AS is_archived FROM products WHERE product_id = %s',
         (product_id,)
     ).fetchone()
 
@@ -3132,7 +3133,7 @@ def delete_product(product_id):
         return redirect(url_for('admin_inventory'))
 
     reference_row = db.execute(
-        'SELECT COUNT(*) AS reference_count FROM order_items WHERE product_id = ?',
+        'SELECT COUNT(*) AS reference_count FROM order_items WHERE product_id = %s',
         (product_id,)
     ).fetchone()
     reference_count = int(reference_row['reference_count'] or 0) if reference_row else 0
@@ -3144,14 +3145,14 @@ def delete_product(product_id):
                    SET is_archived = 1,
                        archived_at = CURRENT_TIMESTAMP,
                        stock_status = 0
-                   WHERE product_id = ?''',
+                   WHERE product_id = %s''',
                 (product_id,)
             )
             action_text = (
                 f"Archived product ID: {product_id} (FK protected, referenced by {reference_count} order item(s))"
             )
             db.execute(
-                'INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)',
+                'INSERT INTO audit_logs (admin_id, action_text, category) VALUES (%s, %s, %s)',
                 (session['admin_id'], action_text, get_log_category(action_text))
             )
             db.commit()
@@ -3161,24 +3162,24 @@ def delete_product(product_id):
         return redirect(url_for('admin_inventory'))
 
     try:
-        db.execute('DELETE FROM products WHERE product_id = ?', (product_id,))
+        db.execute('DELETE FROM products WHERE product_id = %s', (product_id,))
         action_text = f"Deleted product ID: {product_id}"
-        db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)', 
+        db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (%s, %s, %s)', 
                    (session['admin_id'], action_text, get_log_category(action_text)))
         db.commit()
         flash('Product deleted successfully.')
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
         db.execute(
             '''UPDATE products
                SET is_archived = 1,
                    archived_at = CURRENT_TIMESTAMP,
                    stock_status = 0
-               WHERE product_id = ?''',
+               WHERE product_id = %s''',
             (product_id,)
         )
         action_text = f"Archived product ID: {product_id} (fallback after FK protection)"
         db.execute(
-            'INSERT INTO audit_logs (admin_id, action_text, category) VALUES (?, ?, ?)',
+            'INSERT INTO audit_logs (admin_id, action_text, category) VALUES (%s, %s, %s)',
             (session['admin_id'], action_text, get_log_category(action_text))
         )
         db.commit()
@@ -3370,7 +3371,7 @@ def admin_stats():
 
         # 4. Tiered low-stock metrics
         low_stock_res = db.execute(
-            "SELECT name, stock_status FROM products WHERE stock_status <= ? ORDER BY stock_status ASC, name ASC",
+            "SELECT name, stock_status FROM products WHERE stock_status <= %s ORDER BY stock_status ASC, name ASC",
             (LOW_STOCK_WATCH_MAX,)
         ).fetchall()
         low_stock_items = [item['name'] for item in low_stock_res]
@@ -3418,8 +3419,8 @@ def top_products():
         query = f"""
             SELECT
                 p.name,
-                IFNULL(SUM(oi.quantity), 0) AS count,
-                IFNULL(SUM(oi.quantity * oi.price_at_time), 0) AS revenue
+                COALESCE(SUM(oi.quantity), 0) AS count,
+                COALESCE(SUM(oi.quantity * oi.price_at_time), 0) AS revenue
             FROM order_items oi
             JOIN orders o ON oi.order_id = o.order_id
             JOIN products p ON oi.product_id = p.product_id
@@ -3726,13 +3727,13 @@ def inventory_forecast():
                 p.product_id,
                 p.name, 
                 p.stock_status, 
-                IFNULL(SUM(oi.quantity), 0) as sold_30d
+                COALESCE(SUM(oi.quantity), 0) as sold_30d
             FROM products p
             LEFT JOIN order_items oi ON p.product_id = oi.product_id
             LEFT JOIN orders o ON oi.order_id = o.order_id 
-                AND o.created_at >= date('now', '-30 days')
+                AND o.created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'
                 AND o.status != 'Cancelled'
-            WHERE IFNULL(p.is_archived, 0) = 0
+            WHERE COALESCE(p.is_archived, 0) = 0
             GROUP BY p.product_id
         """
         items_30d = db.execute(query_30d).fetchall()
@@ -3741,14 +3742,14 @@ def inventory_forecast():
         query_history = """
             SELECT 
                 p.product_id,
-                strftime('%Y-%m', o.created_at) as sales_month,
+                TO_CHAR(o.created_at, 'YYYY-MM') as sales_month,
                 SUM(oi.quantity) as monthly_sold
             FROM products p
             JOIN order_items oi ON p.product_id = oi.product_id
             JOIN orders o ON oi.order_id = o.order_id
-            WHERE IFNULL(p.is_archived, 0) = 0
+            WHERE COALESCE(p.is_archived, 0) = 0
                 AND o.status != 'Cancelled'
-                AND o.created_at >= date('now', '-12 months')
+                AND o.created_at >= CURRENT_TIMESTAMP - INTERVAL '12 months'
             GROUP BY p.product_id, sales_month
             ORDER BY sales_month ASC
         """
@@ -3828,7 +3829,7 @@ def forgot_password():
     if request.method == 'POST':
         email = request.form.get('email')
         db = get_db()
-        admin = db.execute('SELECT * FROM admin WHERE email = ?', (email,)).fetchone()
+        admin = db.execute('SELECT * FROM admin WHERE email = %s', (email,)).fetchone()
         if admin:
             session['reset_email'] = email
             session['temp_otp'] = "123456" 
@@ -3854,7 +3855,7 @@ def reset_password():
             return render_template('admin/createpass.html')
         hashed = generate_password_hash(new_password)
         db = get_db()
-        db.execute('UPDATE admin SET password_hash = ? WHERE email = ?', (hashed, session.get('reset_email')))
+        db.execute('UPDATE admin SET password_hash = %s WHERE email = %s', (hashed, session.get('reset_email')))
         db.commit()
         session.pop('temp_otp', None)
         flash("Password reset successful!")
@@ -3906,20 +3907,20 @@ def api_audit_logs():
     params = []
     
     if search_query:
-        query += ' AND (audit_logs.action_text LIKE ? OR admin.username LIKE ?)'
+        query += ' AND (audit_logs.action_text LIKE %s OR admin.username LIKE %s)'
         search_pattern = f'%{search_query}%'
         params.extend([search_pattern, search_pattern])
     
     if category_filter:
-        query += ' AND audit_logs.category = ?'
+        query += ' AND audit_logs.category = %s'
         params.append(category_filter)
     
     if date_from:
-        query += ' AND DATE(audit_logs.timestamp) >= ?'
+        query += ' AND DATE(audit_logs.timestamp) >= %s'
         params.append(date_from)
     
     if date_to:
-        query += ' AND DATE(audit_logs.timestamp) <= ?'
+        query += ' AND DATE(audit_logs.timestamp) <= %s'
         params.append(date_to)
     
     query += ' ORDER BY audit_logs.timestamp DESC'
@@ -3961,20 +3962,20 @@ def export_audit_csv():
     params = []
     
     if search_query:
-        query += ' AND (audit_logs.action_text LIKE ? OR admin.username LIKE ?)'
+        query += ' AND (audit_logs.action_text LIKE %s OR admin.username LIKE %s)'
         search_pattern = f'%{search_query}%'
         params.extend([search_pattern, search_pattern])
     
     if category_filter:
-        query += ' AND audit_logs.category = ?'
+        query += ' AND audit_logs.category = %s'
         params.append(category_filter)
     
     if date_from:
-        query += ' AND DATE(audit_logs.timestamp) >= ?'
+        query += ' AND DATE(audit_logs.timestamp) >= %s'
         params.append(date_from)
     
     if date_to:
-        query += ' AND DATE(audit_logs.timestamp) <= ?'
+        query += ' AND DATE(audit_logs.timestamp) <= %s'
         params.append(date_to)
     
     query += ' ORDER BY audit_logs.timestamp DESC'
@@ -4024,20 +4025,20 @@ def export_audit_pdf():
     params = []
     
     if search_query:
-        query += ' AND (audit_logs.action_text LIKE ? OR admin.username LIKE ?)'
+        query += ' AND (audit_logs.action_text LIKE %s OR admin.username LIKE %s)'
         search_pattern = f'%{search_query}%'
         params.extend([search_pattern, search_pattern])
     
     if category_filter:
-        query += ' AND audit_logs.category = ?'
+        query += ' AND audit_logs.category = %s'
         params.append(category_filter)
     
     if date_from:
-        query += ' AND DATE(audit_logs.timestamp) >= ?'
+        query += ' AND DATE(audit_logs.timestamp) >= %s'
         params.append(date_from)
     
     if date_to:
-        query += ' AND DATE(audit_logs.timestamp) <= ?'
+        query += ' AND DATE(audit_logs.timestamp) <= %s'
         params.append(date_to)
     
     query += ' ORDER BY audit_logs.timestamp DESC'
@@ -4114,7 +4115,7 @@ def admin_profile():
         return redirect(url_for('admin_login_page'))
     
     db = get_db()
-    admin = db.execute('SELECT * FROM admin WHERE admin_id = ?', (session['admin_id'],)).fetchone()
+    admin = db.execute('SELECT * FROM admin WHERE admin_id = %s', (session['admin_id'],)).fetchone()
     return render_template('admin/profile.html', admin=admin)
 
 # =============================================================================
@@ -4143,11 +4144,11 @@ def register():
 
     db = get_db()
     existing_contact = db.execute(
-        'SELECT user_id, pin_hash FROM users WHERE contact_no = ?', (contact_no,)
+        'SELECT user_id, pin_hash FROM users WHERE contact_no = %s', (contact_no,)
     ).fetchone()
 
     existing_email = db.execute(
-        'SELECT user_id, pin_hash FROM users WHERE lower(email) = lower(?)', (email,)
+        'SELECT user_id, pin_hash FROM users WHERE lower(email) = lower(%s)', (email,)
     ).fetchone()
 
     if existing_contact and existing_email and existing_contact['user_id'] != existing_email['user_id']:
@@ -4168,13 +4169,13 @@ def register():
     try:
         if target_user_id:
             db.execute(
-                'UPDATE users SET name = ?, contact_no = ?, email = ?, pin_hash = NULL, otp_code = NULL WHERE user_id = ?',
+                'UPDATE users SET name = %s, contact_no = %s, email = %s, pin_hash = NULL, otp_code = NULL WHERE user_id = %s',
                 (full_name, contact_no, email, target_user_id)
             )
             pending_user_id = target_user_id
         else:
             cursor = db.execute(
-                'INSERT INTO users (name, contact_no, email) VALUES (?, ?, ?)',
+                'INSERT INTO users (name, contact_no, email) VALUES (%s, %s, %s)',
                 (full_name, contact_no, email)
             )
             pending_user_id = cursor.lastrowid
@@ -4198,7 +4199,7 @@ def register():
             return jsonify({'error': otp_error or 'Unable to send verification code.'}), 503
 
         db.commit()
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
         db.rollback()
         _clear_pending_registration_session()
         return jsonify({'error': 'Account information already exists.'}), 409
@@ -4249,7 +4250,7 @@ def verify_otp_user():
                 session.pop('pending_otp_expires_at', None)
                 session.pop('pending_otp_attempts', None)
 
-                db.execute('UPDATE users SET otp_code = NULL WHERE user_id = ?', (pending_user_id,))
+                db.execute('UPDATE users SET otp_code = NULL WHERE user_id = %s', (pending_user_id,))
                 db.commit()
                 return redirect(url_for('set_pin'))
             else:
@@ -4288,7 +4289,7 @@ def resend_verify_otp_user():
     db = get_db()
     pending_email = (session.get('pending_email') or '').strip().lower()
     if not pending_email:
-        user = db.execute('SELECT email FROM users WHERE user_id = ?', (pending_user_id,)).fetchone()
+        user = db.execute('SELECT email FROM users WHERE user_id = %s', (pending_user_id,)).fetchone()
         if not user or not user['email']:
             return jsonify({'error': 'No email found for this registration. Please register again.'}), 400
         pending_email = user['email'].strip().lower()
@@ -4370,7 +4371,7 @@ def verify_pin():
         # PINs match — save the hash to the DB and open a full session
         db = get_db()
         db.execute(
-            'UPDATE users SET pin_hash = ?, otp_code = NULL WHERE user_id = ?',
+            'UPDATE users SET pin_hash = %s, otp_code = NULL WHERE user_id = %s',
             (session['pending_pin_hash'], session['pending_user_id'])
         )
         db.commit()
@@ -4396,7 +4397,7 @@ def sign_in():
 
     db   = get_db()
     user = db.execute(
-        'SELECT * FROM users WHERE contact_no = ?', (contact_no,)
+        'SELECT * FROM users WHERE contact_no = %s', (contact_no,)
     ).fetchone()
 
     if not user:
@@ -4444,15 +4445,15 @@ def get_products():
     category = request.args.get('category', '').strip()
     search   = request.args.get('search', '').strip()
 
-    query  = 'SELECT * FROM products WHERE stock_status > 0 AND IFNULL(is_archived, 0) = 0'
+    query  = 'SELECT * FROM products WHERE stock_status > 0 AND COALESCE(is_archived, 0) = 0'
     params = []
 
     if category:
-        query += ' AND category = ?'
+        query += ' AND category = %s'
         params.append(category)
 
     if search:
-        query += ' AND name LIKE ?'
+        query += ' AND name LIKE %s'
         params.append(f'%{search}%')
 
     query += ' ORDER BY name ASC'
@@ -4494,7 +4495,7 @@ def api_recommendations():
 
     pet_profile = "Pet Profile: Unknown"
     if 'user_id' in session:
-        pet = db.execute('SELECT species, age_months, lifestyle_classification FROM pets WHERE user_id = ?', (session['user_id'],)).fetchone()
+        pet = db.execute('SELECT species, age_months, lifestyle_classification FROM pets WHERE user_id = %s', (session['user_id'],)).fetchone()
         if pet:
             pet_profile = f"Pet Profile: Species: {pet['species']}, Age (months): {pet['age_months']}, Lifestyle: {pet['lifestyle_classification']}"
 
@@ -4524,9 +4525,9 @@ def api_recommendations():
         recommended_products = []
         recommended_ids = set()
         if product_names:
-            placeholders = ', '.join(['?'] * len(product_names))
+            placeholders = ', '.join(['%s'] * len(product_names))
             rows = db.execute(
-                f"SELECT * FROM products WHERE name IN ({placeholders}) AND stock_status > 0 AND IFNULL(is_archived, 0) = 0",
+                f"SELECT * FROM products WHERE name IN ({placeholders}) AND stock_status > 0 AND COALESCE(is_archived, 0) = 0",
                 tuple(product_names)
             ).fetchall()
             row_by_name = {row['name'].strip().lower(): row for row in rows}
@@ -4592,7 +4593,7 @@ def api_chat():
             '''
                 SELECT id, name, species, breed, age_months, weight_kg, lifestyle_classification
                 FROM pets
-                WHERE user_id = ?
+                WHERE user_id = %s
                 ORDER BY id ASC
             ''',
             (session['user_id'],)
@@ -4688,7 +4689,7 @@ STRICT GUARDRAILS & RULES:
         budget_amount = _extract_budget_amount(user_message)
         if budget_amount is not None:
             inventory_rows = db.execute(
-                "SELECT name, price FROM products WHERE stock_status > 0 AND IFNULL(is_archived, 0) = 0"
+                "SELECT name, price FROM products WHERE stock_status > 0 AND COALESCE(is_archived, 0) = 0"
             ).fetchall()
             matched_products = _extract_products_from_text(ai_text, inventory_rows)
             verified_total = sum(price for _, price in matched_products)
@@ -4767,12 +4768,12 @@ def _build_validated_order_items(db, items):
                 return {'error': 'Invalid product id provided.'}, 400
 
             product_row = db.execute(
-                'SELECT product_id, name, category, unit, price, unit_options_json, discount_json FROM products WHERE product_id = ? AND IFNULL(is_archived, 0) = 0',
+                'SELECT product_id, name, category, unit, price, unit_options_json, discount_json FROM products WHERE product_id = %s AND COALESCE(is_archived, 0) = 0',
                 (product_id,)
             ).fetchone()
         elif product_name:
             product_row = db.execute(
-                'SELECT product_id, name, category, unit, price, unit_options_json, discount_json FROM products WHERE name = ? AND IFNULL(is_archived, 0) = 0',
+                'SELECT product_id, name, category, unit, price, unit_options_json, discount_json FROM products WHERE name = %s AND COALESCE(is_archived, 0) = 0',
                 (product_name,)
             ).fetchone()
         else:
@@ -4838,7 +4839,7 @@ def checkout_page():
     if 'user_id' not in session:
         return redirect(url_for('sign_in_page'))
     db = get_db()
-    user = db.execute('SELECT name, contact_no FROM users WHERE user_id = ?', (session['user_id'],)).fetchone()
+    user = db.execute('SELECT name, contact_no FROM users WHERE user_id = %s', (session['user_id'],)).fetchone()
     return render_template('user/checkout.html', user=user)
 
 @app.route('/orders/quote', methods=['POST'])
@@ -4873,12 +4874,12 @@ def place_order():
 
     # Generate a unique order number
     order_no = generate_order_no()
-    while db.execute('SELECT order_id FROM orders WHERE order_no = ?', (order_no,)).fetchone():
+    while db.execute('SELECT order_id FROM orders WHERE order_no = %s', (order_no,)).fetchone():
         order_no = generate_order_no()
 
     # Insert the order
     cursor = db.execute(
-        'INSERT INTO orders (order_no, user_id, total_price, status) VALUES (?, ?, ?, ?)',
+        'INSERT INTO orders (order_no, user_id, total_price, status) VALUES (%s, %s, %s, %s)',
         (order_no, session['user_id'], total, 'Pending')
     )
     
@@ -4896,7 +4897,7 @@ def place_order():
                    unit_multiplier,
                    base_price_at_time,
                    discount_amount_at_time
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+               ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)''',
             (
                 order_id,
                 item['product_id'],
@@ -4937,7 +4938,7 @@ def order_progress():
     
     db = get_db()
     # Fetch user info to display real name/contact on the progress page
-    user = db.execute('SELECT name, contact_no FROM users WHERE user_id = ?', 
+    user = db.execute('SELECT name, contact_no FROM users WHERE user_id = %s', 
                       (session['user_id'],)).fetchone()
     
     return render_template('user/myorderprogress.html', user=user)
@@ -4951,7 +4952,7 @@ def order_status(order_no):
     order = db.execute(
         '''SELECT order_no, status, total_price, cancellation_reason
            FROM orders 
-           WHERE order_no = ? AND user_id = ?''',
+           WHERE order_no = %s AND user_id = %s''',
         (order_no, session['user_id'])
     ).fetchone()
 
@@ -4976,7 +4977,7 @@ def latest_order_status():
     order = db.execute(
         '''SELECT order_no, status, total_price 
            FROM orders 
-           WHERE user_id = ?
+           WHERE user_id = %s
            ORDER BY created_at DESC 
            LIMIT 1''',
         (session['user_id'],)
@@ -5002,7 +5003,7 @@ def order_history():
     orders = db.execute(
         '''SELECT o.order_id, o.order_no, o.status, o.total_price, o.created_at
            FROM orders o
-           WHERE o.user_id = ?
+           WHERE o.user_id = %s
            ORDER BY o.created_at DESC''',
         (session['user_id'],)
     ).fetchall()
@@ -5024,7 +5025,7 @@ def order_history():
                    p.product_id
                FROM order_items oi
                LEFT JOIN products p ON oi.product_id = p.product_id
-               WHERE oi.order_id = ?''',
+               WHERE oi.order_id = %s''',
             (o['order_id'],)
         ).fetchall()
 
@@ -5061,7 +5062,7 @@ def profile_page():
     if 'user_id' not in session:
         return redirect(url_for('sign_in_page'))
     db = get_db()
-    user = db.execute('SELECT name, contact_no, email FROM users WHERE user_id = ?', (session['user_id'],)).fetchone()
+    user = db.execute('SELECT name, contact_no, email FROM users WHERE user_id = %s', (session['user_id'],)).fetchone()
     return render_template('user/profile.html', user=user)
 
 
@@ -5075,7 +5076,7 @@ def user_profile_api():
 
     if request.method == 'GET':
         user = db.execute(
-            'SELECT name, contact_no, email FROM users WHERE user_id = ?',
+            'SELECT name, contact_no, email FROM users WHERE user_id = %s',
             (user_id,)
         ).fetchone()
         if not user:
@@ -5096,21 +5097,21 @@ def user_profile_api():
         return jsonify({'error': 'Please enter a valid email address.'}), 400
 
     duplicate_contact = db.execute(
-        'SELECT user_id FROM users WHERE contact_no = ? AND user_id != ?',
+        'SELECT user_id FROM users WHERE contact_no = %s AND user_id != %s',
         (contact_no, user_id)
     ).fetchone()
     if duplicate_contact:
         return jsonify({'error': 'That contact number is already in use.'}), 409
 
     duplicate_email = db.execute(
-        'SELECT user_id FROM users WHERE lower(email) = lower(?) AND user_id != ?',
+        'SELECT user_id FROM users WHERE lower(email) = lower(%s) AND user_id != %s',
         (email, user_id)
     ).fetchone()
     if duplicate_email:
         return jsonify({'error': 'That email is already in use.'}), 409
 
     db.execute(
-        'UPDATE users SET contact_no = ?, email = ? WHERE user_id = ?',
+        'UPDATE users SET contact_no = %s, email = %s WHERE user_id = %s',
         (contact_no, email, user_id)
     )
     db.commit()
@@ -5124,7 +5125,7 @@ def verify_code_page():
         return redirect(url_for('sign_in_page'))
 
     db = get_db()
-    user = db.execute('SELECT email FROM users WHERE user_id = ?', (session['user_id'],)).fetchone()
+    user = db.execute('SELECT email FROM users WHERE user_id = %s', (session['user_id'],)).fetchone()
 
     email = user['email'] if user and user['email'] else ''
     return render_template('user/verifycode.html', masked_email=_mask_email(email))
@@ -5160,14 +5161,14 @@ def change_pin():
             return jsonify({'error': 'PIN must be exactly 4 digits.'}), 400
 
         db = get_db()
-        user = db.execute('SELECT pin_hash FROM users WHERE user_id = ?', (session['user_id'],)).fetchone()
+        user = db.execute('SELECT pin_hash FROM users WHERE user_id = %s', (session['user_id'],)).fetchone()
 
         if not user or not check_password_hash(user['pin_hash'], old_pin):
             return jsonify({'error': 'Incorrect old PIN.'}), 401
 
         pin_hash = generate_password_hash(new_pin)
         db.execute(
-            'UPDATE users SET pin_hash = ? WHERE user_id = ?',
+            'UPDATE users SET pin_hash = %s WHERE user_id = %s',
             (pin_hash, session['user_id'])
         )
         db.commit()
@@ -5186,7 +5187,7 @@ def user_pet_profile():
 
     if request.method == 'GET':
         pets = db.execute(
-            'SELECT * FROM pets WHERE user_id = ? ORDER BY id ASC',
+            'SELECT * FROM pets WHERE user_id = %s ORDER BY id ASC',
             (session['user_id'],)
         ).fetchall()
         return jsonify({'pets': [dict(pet) for pet in pets]})
@@ -5211,8 +5212,8 @@ def user_pet_profile():
 
             update_cursor = db.execute('''
                 UPDATE pets
-                SET name=?, species=?, breed=?, age_months=?, weight_kg=?
-                WHERE id=? AND user_id=?
+                SET name=%s, species=%s, breed=%s, age_months=%s, weight_kg=%s
+                WHERE id=%s AND user_id=%s
             ''', (name, species, breed, age, weight, pet_id, session['user_id']))
 
             if update_cursor.rowcount == 0:
@@ -5222,7 +5223,7 @@ def user_pet_profile():
         else:
             insert_cursor = db.execute('''
                 INSERT INTO pets (user_id, name, species, breed, age_months, weight_kg)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
             ''', (session['user_id'], name, species, breed, age, weight))
             saved_pet_id = insert_cursor.lastrowid
 
@@ -5230,7 +5231,6 @@ def user_pet_profile():
         return jsonify({'success': True, 'pet_id': saved_pet_id})
 
 if __name__ == '__main__':
-    if not os.path.exists(DATABASE):
-        init_db()
+    # Database is now cloud-hosted on Supabase, no local file initialization needed
     ensure_startup_schema_guard()
     app.run(debug=True)
