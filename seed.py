@@ -311,16 +311,16 @@ def seed_products(database_url, csv_path, replace_existing=True, truncate=False,
             cur.execute("SELECT COUNT(*) FROM products")
             total = cur.fetchone()[0]
         
-		mode = "DRY-RUN" if dry_run else "APPLIED"
-		print(f"Seed completed ({mode}).")
-		print(f"Inserted: {inserted}")
-		print(f"Updated: {updated}")
-		print(f"Skipped: {skipped}")
-		print(f"Invalid rows: {invalid}")
-		print(f"Products in table: {total}")
+        mode = "DRY-RUN" if dry_run else "APPLIED"
+        print(f"Seed completed ({mode}).")
+        print(f"Inserted: {inserted}")
+        print(f"Updated: {updated}")
+        print(f"Skipped: {skipped}")
+        print(f"Invalid rows: {invalid}")
+        print(f"Products in table: {total}")
 
-	finally:
-		conn.close()
+    finally:
+        conn.close()
 
 
 def parse_args():
