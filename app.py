@@ -3003,14 +3003,16 @@ def add_category():
 
     options_to_store = requested_options or _default_category_unit_options(category_name)
     cursor = db.execute(
-        'INSERT INTO categories (name, unit_options_json) VALUES (%s, %s)',
+        'INSERT INTO categories (name, unit_options_json) VALUES (%s, %s) RETURNING id',
         (category_name, json.dumps(options_to_store))
     )
+    new_row = cursor.fetchone()
+    new_id = new_row['id'] if new_row else None
     db.commit()
     return jsonify({
         'success': True,
         'category': {
-            'id': cursor.lastrowid,
+            'id': new_id,
             'name': category_name,
             'unit_options': options_to_store
         },
@@ -4222,10 +4224,13 @@ def register():
             pending_user_id = target_user_id
         else:
             cursor = db.execute(
-                'INSERT INTO users (name, contact_no, email) VALUES (%s, %s, %s)',
+                'INSERT INTO users (name, contact_no, email) VALUES (%s, %s, %s) RETURNING user_id',
                 (full_name, contact_no, email)
             )
-            pending_user_id = cursor.lastrowid
+            row = cursor.fetchone()
+            pending_user_id = row['user_id'] if row else None
+            if not pending_user_id:
+                raise RuntimeError('Failed to create user account.')
 
         _clear_pending_registration_session()
         session['pending_user_id'] = pending_user_id
@@ -5294,9 +5299,10 @@ def user_pet_profile():
             else:
                 insert_cursor = db.execute('''
                     INSERT INTO pets (user_id, name, species, breed, age_months, weight_kg)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
                 ''', (session['user_id'], name, species, breed, age, weight))
-                saved_pet_id = insert_cursor.lastrowid
+                pet_row = insert_cursor.fetchone()
+                saved_pet_id = pet_row['id'] if pet_row else None
 
             db.commit()
             return jsonify({'success': True, 'pet_id': saved_pet_id})
