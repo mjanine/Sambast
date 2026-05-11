@@ -290,8 +290,10 @@ function render(list, isAISuggestions = false) {
     grid.innerHTML = "";
     for (var i = 0; i < list.length; i++) {
         var p = list[i];
-        var imgSrc = p.image_filename
-            ? '/product-image/' + encodeURIComponent(p.image_filename)
+        var imageFilename = String(p.image_filename || '').trim();
+        var hasImage = imageFilename && !/^(null|none|undefined)$/i.test(imageFilename);
+        var imgSrc = hasImage
+            ? '/product-image/' + encodeURIComponent(imageFilename)
             : '/static/img/no-image.svg';
         var div = document.createElement('div');
         div.className = "product-card";

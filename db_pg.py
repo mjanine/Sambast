@@ -3,6 +3,7 @@ PostgreSQL Database Connection Manager for Sambast
 Provides connection pooling and Dictionary Cursor support for Flask app
 """
 
+import logging
 import os
 import psycopg2
 from psycopg2 import pool
@@ -11,6 +12,48 @@ from flask import g
 
 # Connection pool instance (will be initialized on first use)
 _connection_pool = None
+logger = logging.getLogger(__name__)
+
+
+def _format_psycopg2_error(exc):
+    details = []
+    pgcode = getattr(exc, 'pgcode', None)
+    if pgcode:
+        details.append(f'pgcode={pgcode}')
+
+    diag = getattr(exc, 'diag', None)
+    if diag is not None:
+        for attribute, label in (
+            ('schema_name', 'schema'),
+            ('table_name', 'table'),
+            ('column_name', 'column'),
+            ('constraint_name', 'constraint'),
+        ):
+            value = getattr(diag, attribute, None)
+            if value:
+                details.append(f'{label}={value}')
+
+        message_primary = getattr(diag, 'message_primary', None)
+        if message_primary:
+            details.append(message_primary)
+
+    pgerror = getattr(exc, 'pgerror', None)
+    if pgerror:
+        cleaned_error = pgerror.strip()
+        if cleaned_error and cleaned_error not in details:
+            details.append(cleaned_error)
+
+    return '; '.join(details) if details else str(exc)
+
+
+def _raise_logged_psycopg2_error(exc, query=None):
+    details = _format_psycopg2_error(exc)
+    if query is not None:
+        query_preview = ' '.join(str(query).split())
+        logger.exception('PostgreSQL query failed: %s | query=%s', details, query_preview)
+    else:
+        logger.exception('PostgreSQL operation failed: %s', details)
+    raise RuntimeError(f'PostgreSQL error: {details}') from exc
 
 
 class DbConnectionAdapter:
@@ -21,8 +64,16 @@ class DbConnectionAdapter:
 
     def execute(self, query, params=None):
         cur = self._conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(query, params or ())
-        return cur
+        try:
+            cur.execute(query, params or ())
+            return cur
+        except psycopg2.Error as exc:
+            self._conn.rollback()
+            try:
+                cur.close()
+            except Exception:
+                pass
+            _raise_logged_psycopg2_error(exc, query)
 
     def cursor(self):
         # Keep default cursor behavior for migration/admin code that uses index access.
@@ -99,7 +150,11 @@ def execute_query(query, params=None):
     conn = get_db_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(query, params or ())
+            try:
+                cur.execute(query, params or ())
+            except psycopg2.Error as exc:
+                conn.rollback()
+                _raise_logged_psycopg2_error(exc, query)
             return cur.fetchall()
     finally:
         return_db_connection(conn)
@@ -111,7 +166,11 @@ def execute_query_single(query, params=None):
     conn = get_db_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(query, params or ())
+            try:
+                cur.execute(query, params or ())
+            except psycopg2.Error as exc:
+                conn.rollback()
+                _raise_logged_psycopg2_error(exc, query)
             return cur.fetchone()
     finally:
         return_db_connection(conn)
@@ -124,11 +183,16 @@ def execute_update(query, params=None):
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute(query, params or ())
+            try:
+                cur.execute(query, params or ())
+            except psycopg2.Error as exc:
+                conn.rollback()
+                _raise_logged_psycopg2_error(exc, query)
             conn.commit()
             return cur.rowcount
     except Exception:
-        conn.rollback()
+        if conn.status != psycopg2.extensions.STATUS_READY:
+            conn.rollback()
         raise
     finally:
         return_db_connection(conn)

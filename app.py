@@ -665,17 +665,16 @@ def _run_migrations(db):
             print("Migration: Added unit_options_json column to categories table.")
         
         # Backfill categories from products
-        cursor.execute("""
+        existing_categories = db.execute("""
             SELECT DISTINCT TRIM(category) AS category_name FROM products 
             WHERE category IS NOT NULL AND TRIM(category) != ''
-        """)
-        existing_categories = cursor.fetchall()
+        """).fetchall()
         for row in existing_categories:
-            category_name = (row[0] or '').strip()
+            category_name = (row['category_name'] or '').strip()
             if category_name:
                 cursor.execute("""
                     INSERT INTO categories (name) VALUES (%s)
-                    ON CONFLICT (name) DO NOTHING
+                    ON CONFLICT ON CONSTRAINT categories_name_key DO NOTHING
                 """, (category_name,))
         db.commit()
         
@@ -685,12 +684,11 @@ def _run_migrations(db):
         
         if null_count > 0:
             print(f"Migration: Backfilling {null_count} audit logs with correct categories...")
-            cursor.execute("SELECT log_id, action_text FROM audit_logs WHERE category IS NULL OR category = ''")
-            logs_to_update = cursor.fetchall()
-            
-            for log_id, action_text in logs_to_update:
-                category = get_log_category(action_text)
-                cursor.execute("UPDATE audit_logs SET category = %s WHERE log_id = %s", (category, log_id))
+            logs_to_update = db.execute("SELECT log_id, action_text FROM audit_logs WHERE category IS NULL OR category = ''").fetchall()
+
+            for log_row in logs_to_update:
+                category = get_log_category(log_row['action_text'])
+                cursor.execute("UPDATE audit_logs SET category = %s WHERE log_id = %s", (category, log_row['log_id']))
             
             db.commit()
             print(f"Migration: Successfully backfilled {null_count} audit logs with categories.")
@@ -2068,7 +2066,31 @@ def ensure_startup_schema_guard():
         db = get_db()
         cursor = db.cursor()
 
+        def ensure_unique_constraint(table_name, column_name, constraint_name):
+            cursor.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage kcu
+                      ON tc.constraint_name = kcu.constraint_name
+                     AND tc.table_schema = kcu.table_schema
+                    WHERE tc.table_schema = 'public'
+                      AND tc.table_name = %s
+                      AND kcu.column_name = %s
+                      AND tc.constraint_type IN ('PRIMARY KEY', 'UNIQUE')
+                )
+                """,
+                (table_name, column_name),
+            )
+            has_unique_constraint = cursor.fetchone()[0]
+            if not has_unique_constraint:
+                cursor.execute(
+                    f'ALTER TABLE {table_name} ADD CONSTRAINT {constraint_name} UNIQUE ({column_name})'
+                )
+
         pets_exists = False
+        categories_exists = False
         products_exists = False
         product_columns = set()
 
@@ -2092,23 +2114,38 @@ def ensure_startup_schema_guard():
         )
         products_exists = cursor.fetchone()[0]
 
-        if products_exists:
-            cursor.execute(
-                """
-                SELECT column_name FROM information_schema.columns
-                WHERE table_name = 'products'
-                """
+        cursor.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'categories'
             )
-            product_columns = {row[0] for row in cursor.fetchall()}
+            """
+        )
+        categories_exists = cursor.fetchone()[0]
+
+        if products_exists:
+            product_columns = {
+                row['column_name']
+                for row in db.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_name = 'products'
+                    """
+                ).fetchall()
+            }
 
         missing_columns = required_product_columns - product_columns
-        if (not pets_exists) or missing_columns:
+        if (not pets_exists) or (not categories_exists) or missing_columns:
             print(
                 "Startup schema guard detected missing phase-6 schema. "
-                f"Missing pets table: {not pets_exists}. Missing product columns: {sorted(missing_columns)}"
+                f"Missing pets table: {not pets_exists}. Missing categories table: {not categories_exists}. Missing product columns: {sorted(missing_columns)}"
             )
             from migrate_db import run_migration
             run_migration()
+
+        ensure_unique_constraint('categories', 'name', 'categories_name_key')
+        db.commit()
 
 VET_DISCLAIMER = "I am an AI, not a veterinarian. Please consult a vet for medical advice."
 
@@ -3057,19 +3094,24 @@ def add_product():
     if not parsed_unit_options and category:
         parsed_unit_options = _get_category_unit_options(db, category)
         unit_options_json = json.dumps(parsed_unit_options)
-    if category:
-        db.execute(
-            'INSERT INTO categories (name, unit_options_json) VALUES (%s, %s) ON CONFLICT (name) DO UPDATE SET unit_options_json = EXCLUDED.unit_options_json',
-            (category, json.dumps(_default_category_unit_options(category)))
-        )
-    db.execute('''INSERT INTO products (name, category, unit, price, stock_status, image_filename, description, unit_options_json, discount_json) 
-                  VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)''', (name, category, unit, price, stock_status, filename, description, unit_options_json, discount_json))
-    action_text = f"Added product: {name}"
-    db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (%s, %s, %s)', 
-               (session['admin_id'], action_text, get_log_category(action_text)))
-    db.commit()
-    flash(f"Product {name} added!")
-    return redirect(url_for('admin_inventory'))
+    try:
+        if category:
+            db.execute(
+                'INSERT INTO categories (name, unit_options_json) VALUES (%s, %s) ON CONFLICT ON CONSTRAINT categories_name_key DO UPDATE SET unit_options_json = EXCLUDED.unit_options_json',
+                (category, json.dumps(_default_category_unit_options(category)))
+            )
+        db.execute('''INSERT INTO products (name, category, unit, price, stock_status, image_filename, description, unit_options_json, discount_json) 
+                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)''', (name, category, unit, price, stock_status, filename, description, unit_options_json, discount_json))
+        action_text = f"Added product: {name}"
+        db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (%s, %s, %s)', 
+                   (session['admin_id'], action_text, get_log_category(action_text)))
+        db.commit()
+        flash(f"Product {name} added!")
+        return redirect(url_for('admin_inventory'))
+    except (RuntimeError, psycopg2.Error) as exc:
+        db.rollback()
+        flash(f"Product could not be added: {exc}")
+        return redirect(url_for('admin_inventory'))
 
 @app.route('/admin/products/edit/<int:product_id>', methods=['POST'])
 def edit_product(product_id):
@@ -3095,28 +3137,33 @@ def edit_product(product_id):
     if not parsed_unit_options and category:
         parsed_unit_options = _get_category_unit_options(db, category)
         unit_options_json = json.dumps(parsed_unit_options)
-    if category:
-        db.execute(
-            'INSERT INTO categories (name, unit_options_json) VALUES (%s, %s) ON CONFLICT (name) DO UPDATE SET unit_options_json = EXCLUDED.unit_options_json',
-            (category, json.dumps(_default_category_unit_options(category)))
-        )
-    
-    # Handle Image Update if provided
-    file = request.files.get('image')
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        db.execute('UPDATE products SET image_filename = %s WHERE product_id = %s', (filename, product_id))
-    elif remove_image:
-        db.execute('UPDATE products SET image_filename = %s WHERE product_id = %s', ('', product_id))
+    try:
+        if category:
+            db.execute(
+                'INSERT INTO categories (name, unit_options_json) VALUES (%s, %s) ON CONFLICT ON CONSTRAINT categories_name_key DO UPDATE SET unit_options_json = EXCLUDED.unit_options_json',
+                (category, json.dumps(_default_category_unit_options(category)))
+            )
 
-    db.execute('''UPDATE products SET name=%s, category=%s, unit=%s, price=%s, description=%s, stock_status=%s, unit_options_json=%s, discount_json=%s 
-                  WHERE product_id = %s''', (name, category, unit, price, description, stock_status, unit_options_json, discount_json, product_id))
-    action_text = f"Edited product ID: {product_id}"
-    db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (%s, %s, %s)', 
-               (session['admin_id'], action_text, get_log_category(action_text)))
-    db.commit()
-    return redirect(url_for('admin_inventory'))
+        # Handle Image Update if provided
+        file = request.files.get('image')
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            db.execute('UPDATE products SET image_filename = %s WHERE product_id = %s', (filename, product_id))
+        elif remove_image:
+            db.execute('UPDATE products SET image_filename = %s WHERE product_id = %s', ('', product_id))
+
+        db.execute('''UPDATE products SET name=%s, category=%s, unit=%s, price=%s, description=%s, stock_status=%s, unit_options_json=%s, discount_json=%s 
+                      WHERE product_id = %s''', (name, category, unit, price, description, stock_status, unit_options_json, discount_json, product_id))
+        action_text = f"Edited product ID: {product_id}"
+        db.execute('INSERT INTO audit_logs (admin_id, action_text, category) VALUES (%s, %s, %s)', 
+                   (session['admin_id'], action_text, get_log_category(action_text)))
+        db.commit()
+        return redirect(url_for('admin_inventory'))
+    except (RuntimeError, psycopg2.Error) as exc:
+        db.rollback()
+        flash(f"Product could not be updated: {exc}")
+        return redirect(url_for('admin_inventory'))
 
 @app.route('/admin/products/delete/<int:product_id>', methods=['POST'])
 def delete_product(product_id):
@@ -3881,7 +3928,7 @@ def admin_audit():
     categories = db.execute('''
         SELECT DISTINCT category FROM audit_logs ORDER BY category ASC
     ''').fetchall()
-    category_list = [cat[0] for cat in categories] if categories else []
+    category_list = [cat['category'] for cat in categories] if categories else []
     
     return render_template('admin/audit_logs.html', logs=logs, categories=category_list)
 
@@ -4460,6 +4507,10 @@ def get_products():
 
     products = db.execute(query, params).fetchall()
 
+    def normalize_image_filename(value):
+        cleaned_value = str(value).strip() if value is not None else ''
+        return '' if cleaned_value.lower() in {'null', 'none', 'undefined'} else cleaned_value
+
     return [{
         'product_id'     : p['product_id'],
         'name'           : p['name'],
@@ -4467,7 +4518,7 @@ def get_products():
         'unit'           : (p['unit'] if 'unit' in p.keys() else 'pcs') or 'pcs',
         'price'          : p['price'],
         'description'    : p['description'],
-        'image_filename' : p['image_filename'],
+        'image_filename' : normalize_image_filename(p['image_filename']),
         'stock_status'   : p['stock_status'],
         'unit_options'   : _get_product_unit_options(p),
         'discounts'      : _normalize_discounts(p['discount_json']) if 'discount_json' in p.keys() else []
@@ -4877,40 +4928,59 @@ def place_order():
     while db.execute('SELECT order_id FROM orders WHERE order_no = %s', (order_no,)).fetchone():
         order_no = generate_order_no()
 
-    # Insert the order
-    cursor = db.execute(
-        'INSERT INTO orders (order_no, user_id, total_price, status) VALUES (%s, %s, %s, %s)',
-        (order_no, session['user_id'], total, 'Pending')
-    )
-    
-    order_id = cursor.lastrowid
-
-    # Insert each line item
-    for item in validated_items:
-        db.execute(
-            '''INSERT INTO order_items (
-                   order_id,
-                   product_id,
-                   quantity,
-                   price_at_time,
-                   selected_unit,
-                   unit_multiplier,
-                   base_price_at_time,
-                   discount_amount_at_time
-               ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)''',
-            (
-                order_id,
-                item['product_id'],
-                item['qty'],
-                item['price'],
-                item['selected_unit'],
-                item['unit_multiplier'],
-                item['base_price_at_time'],
-                item['discount_amount_at_time']
-            )
+    try:
+        # Insert the order
+        cursor = db.execute(
+            'INSERT INTO orders (order_no, user_id, total_price, status) VALUES (%s, %s, %s, %s) RETURNING order_id',
+            (order_no, session['user_id'], total, 'Pending')
         )
 
-    db.commit()
+        order_row = cursor.fetchone()
+        if not order_row:
+            raise RuntimeError('Failed to fetch generated order_id after inserting order.')
+
+        order_id = order_row['order_id']
+        cart_items = validated_items
+        print(f'Inserting {len(cart_items)} items for Order ID: {order_id}')
+
+        # Insert each line item
+        inserted_item_count = 0
+        for item in cart_items:
+            item_cursor = db.execute(
+                '''INSERT INTO order_items (
+                       order_id,
+                       product_id,
+                       quantity,
+                       price_at_time,
+                       selected_unit,
+                       unit_multiplier,
+                       base_price_at_time,
+                       discount_amount_at_time
+                   ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING item_id''',
+                (
+                    int(order_id),
+                    int(item['product_id']),
+                    int(item['qty']),
+                    float(item['price']),
+                    item['selected_unit'],
+                    float(item['unit_multiplier']),
+                    float(item['base_price_at_time']),
+                    float(item['discount_amount_at_time'])
+                )
+            )
+            item_row = item_cursor.fetchone()
+            inserted_item_count += 1
+            inserted_item_id = item_row['item_id'] if item_row else None
+            print(
+                'place_order: inserted order_item '
+                f'item_id={inserted_item_id} order_id={order_id} product_id={item["product_id"]} qty={item["qty"]}'
+            )
+
+        print(f'place_order: completed item inserts for order_id={order_id} inserted_item_count={inserted_item_count}')
+        db.commit()
+    except (RuntimeError, psycopg2.Error) as exc:
+        db.rollback()
+        return {'error': str(exc)}, 500
 
     # Trigger lifestyle classification only when enough new order history exists.
     should_trigger_lifestyle, current_order_count = _should_trigger_lifestyle_refresh(db, session['user_id'])
@@ -5204,31 +5274,35 @@ def user_pet_profile():
         weight = data.get('weight_kg', 0.0)
         pet_id = data.get('pet_id')
 
-        if pet_id is not None:
-            try:
-                pet_id = int(pet_id)
-            except (TypeError, ValueError):
-                return jsonify({'error': 'Invalid pet id'}), 400
+        try:
+            if pet_id is not None:
+                try:
+                    pet_id = int(pet_id)
+                except (TypeError, ValueError):
+                    return jsonify({'error': 'Invalid pet id'}), 400
 
-            update_cursor = db.execute('''
-                UPDATE pets
-                SET name=%s, species=%s, breed=%s, age_months=%s, weight_kg=%s
-                WHERE id=%s AND user_id=%s
-            ''', (name, species, breed, age, weight, pet_id, session['user_id']))
+                update_cursor = db.execute('''
+                    UPDATE pets
+                    SET name=%s, species=%s, breed=%s, age_months=%s, weight_kg=%s
+                    WHERE id=%s AND user_id=%s
+                ''', (name, species, breed, age, weight, pet_id, session['user_id']))
 
-            if update_cursor.rowcount == 0:
-                return jsonify({'error': 'Pet not found'}), 404
+                if update_cursor.rowcount == 0:
+                    return jsonify({'error': 'Pet not found'}), 404
 
-            saved_pet_id = pet_id
-        else:
-            insert_cursor = db.execute('''
-                INSERT INTO pets (user_id, name, species, breed, age_months, weight_kg)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            ''', (session['user_id'], name, species, breed, age, weight))
-            saved_pet_id = insert_cursor.lastrowid
+                saved_pet_id = pet_id
+            else:
+                insert_cursor = db.execute('''
+                    INSERT INTO pets (user_id, name, species, breed, age_months, weight_kg)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                ''', (session['user_id'], name, species, breed, age, weight))
+                saved_pet_id = insert_cursor.lastrowid
 
-        db.commit()
-        return jsonify({'success': True, 'pet_id': saved_pet_id})
+            db.commit()
+            return jsonify({'success': True, 'pet_id': saved_pet_id})
+        except (RuntimeError, psycopg2.Error) as exc:
+            db.rollback()
+            return jsonify({'error': str(exc)}), 500
 
 if __name__ == '__main__':
     # Database is now cloud-hosted on Supabase, no local file initialization needed
