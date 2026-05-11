@@ -4,3 +4,4 @@ python-dotenv
 reportlab
 requests
 psycopg2-binary
+gunicorn
