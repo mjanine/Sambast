@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sambast | Verify Recovery Code</title>
+    <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='image/logo.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/user/usersignin.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="auth-page">
+<!-- ERROR MODAL -->
+<div id="errorModal" class="modal-overlay">
+    <div class="modal-box" role="dialog" aria-modal="true">
+        <h2 class="modal-title">Error</h2>
+        <p id="modalErrorText" class="modal-message">Something went wrong.</p>
+        <button type="button" id="modalOkBtn" class="modal-btn">OK</button>
+    </div>
+</div>
+
+    <div class="mobile-container">
+        <header class="header">
+            <img src="{{ url_for('static', filename='image/logo.png') }}" alt="Logo" class="logo-img">
+        </header>
+
+        <main class="auth-content">
+            <h1 class="main-title">Enter Recovery Code</h1>
+            <p style="text-align: center; color: #666; margin-bottom: 24px; font-size: 14px;">
+                A 6-digit code has been sent to {{ masked_email }}
+            </p>
+            
+            <form class="auth-form" id="verifyOtpForm">
+                <div class="pin-container" style="gap: 8px;">
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
+                </div>
+                <input type="hidden" name="otp" id="otpValue">
+
+                <button type="submit" class="primary-btn">VERIFY CODE</button>
+
+                <a href="{{ url_for('forgot_pin') }}" class="forgot-link">Back to Contact Entry</a>
+            </form>
+        </main>
+
+        <footer class="auth-footer">
+            <p>Don't have an account? <a href="/" class="accent-link">Create an account</a></p>
+        </footer>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const form = document.getElementById('verifyOtpForm');
+        const otpInputs = document.querySelectorAll('.pin-container input');
+
+        // ===== OTP AUTO MOVE =====
+        otpInputs.forEach((input, index) => {
+            input.addEventListener('input', (e) => {
+                if (e.target.value.length === 1 && index < otpInputs.length - 1) {
+                    otpInputs[index + 1].focus();
+                }
+            });
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && !e.target.value && index > 0) {
+                    otpInputs[index - 1].focus();
+                }
+            });
+        });
+
+        // ===== FORM SUBMIT =====
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            let otp = '';
+            otpInputs.forEach(input => otp += input.value);
+
+            if (otp.length !== 6) {
+                showErrorModal('Please enter all 6 digits of the recovery code.');
+                return;
+            }
+
+            const submitButton = form.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.textContent = 'Verifying...';
+
+            fetch('/verify-pin-recovery', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    otp: otp
+                })
+            })
+            .then(response =>
+                response.json().then(data => ({
+                    ok: response.ok,
+                    data
+                }))
+            )
+            .then(({ ok, data }) => {
+                if (ok) {
+                    window.location.href = data.redirect_url;
+                } else {
+                    showErrorModal(data.error || 'Verification failed. Please try again.');
+                }
+            })
+            .catch(err => {
+                console.error('Error:', err);
+                showErrorModal('A network error occurred. Please try again.');
+            })
+            .finally(() => {
+                submitButton.disabled = false;
+                submitButton.textContent = 'VERIFY CODE';
+            });
+        });
+    });
+
+    function showErrorModal(message) {
+        const modal = document.getElementById("errorModal");
+        const text = document.getElementById("modalErrorText");
+        const okBtn = document.getElementById("modalOkBtn");
+
+        text.textContent = message;
+        modal.style.display = "flex";
+
+        okBtn.onclick = null;
+        modal.onclick = null;
+
+        okBtn.onclick = () => {
+            modal.style.display = "none";
+        };
+
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                modal.style.display = "none";
+            }
+        };
+    }
+    </script>
+</body>
+</html>

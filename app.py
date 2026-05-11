@@ -4476,6 +4476,184 @@ def sign_out():
     return redirect(url_for('sign_in_page'))
 
 
+# =============================================================================
+# FORGOT PIN RECOVERY FLOW (User Side)
+# =============================================================================
+
+@app.route('/forgot-pin', methods=['GET', 'POST'])
+def forgot_pin():
+    """
+    Step 1: User enters contact number to start PIN recovery.
+    OTP is sent to the email associated with the account.
+    """
+    if request.method == 'POST':
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Invalid request. Expected JSON.'}), 400
+        
+        contact_no = data.get('contact_no', '').strip()
+        
+        # Validate contact number format
+        if not re.fullmatch(r'^\d{11}$', contact_no):
+            return jsonify({'error': 'Contact number must be exactly 11 digits.'}), 400
+        
+        db = get_db()
+        user = db.execute(
+            'SELECT user_id, email FROM users WHERE contact_no = %s',
+            (contact_no,)
+        ).fetchone()
+        
+        if not user:
+            return jsonify({'error': 'No account found with that contact number.'}), 404
+        
+        if not user['email']:
+            return jsonify({
+                'error': 'No email address on file. Cannot send PIN recovery code. Please contact support.'
+            }), 403
+        
+        # Generate and send OTP
+        now_ts = int(time.time())
+        otp_code = _generate_numeric_otp()
+        otp_hash = generate_password_hash(otp_code)
+        
+        # Send OTP email
+        subject = 'Sambast PIN Recovery Code'
+        body = (
+            'Your Sambast PIN recovery code is:\n\n'
+            f'{otp_code}\n\n'
+            f'This code expires in {USER_OTP_EXPIRY_SECONDS // 60} minutes. '
+            'If you did not request this, please ignore this email.'
+        )
+        try:
+            _send_email_message(user['email'], subject, body)
+        except RuntimeError as e:
+            return jsonify({'error': str(e)}), 500
+        
+        # Store in session
+        session['pin_recovery_user_id'] = user['user_id']
+        session['pin_recovery_contact_no'] = contact_no
+        session['pin_recovery_otp_hash'] = otp_hash
+        session['pin_recovery_otp_expires_at'] = now_ts + USER_OTP_EXPIRY_SECONDS
+        session['pin_recovery_otp_attempts'] = 0
+        
+        masked_email = _mask_email(user['email'])
+        return jsonify({
+            'success': True,
+            'message': f'OTP sent to {masked_email}',
+            'redirect_url': url_for('verify_pin_recovery')
+        })
+    
+    return render_template('user/forgotpin.html')
+
+
+@app.route('/verify-pin-recovery', methods=['GET', 'POST'])
+def verify_pin_recovery():
+    """
+    Step 2: User enters OTP code to verify identity.
+    """
+    if 'pin_recovery_user_id' not in session:
+        return redirect(url_for('forgot_pin'))
+    
+    if request.method == 'POST':
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Invalid request. Expected JSON.'}), 400
+        
+        otp_code = data.get('otp', '').strip()
+        
+        # Check expiry
+        now_ts = int(time.time())
+        otp_expires_at = session.get('pin_recovery_otp_expires_at', 0)
+        if now_ts > otp_expires_at:
+            session.pop('pin_recovery_user_id', None)
+            session.pop('pin_recovery_otp_hash', None)
+            return jsonify({'error': 'OTP has expired. Please restart PIN recovery.'}), 401
+        
+        # Check attempts
+        attempts = int(session.get('pin_recovery_otp_attempts', 0) or 0)
+        if attempts >= USER_OTP_MAX_ATTEMPTS:
+            session.pop('pin_recovery_user_id', None)
+            session.pop('pin_recovery_otp_hash', None)
+            return jsonify({'error': 'Too many failed attempts. Please restart PIN recovery.'}), 401
+        
+        # Verify OTP
+        otp_hash = session.get('pin_recovery_otp_hash')
+        if not otp_hash or not check_password_hash(otp_hash, otp_code):
+            session['pin_recovery_otp_attempts'] = attempts + 1
+            remaining = USER_OTP_MAX_ATTEMPTS - (attempts + 1)
+            return jsonify({
+                'error': f'Incorrect OTP. {remaining} attempts remaining.'
+            }), 401
+        
+        # OTP verified
+        session['pin_recovery_otp_verified'] = True
+        return jsonify({
+            'success': True,
+            'redirect_url': url_for('reset_pin')
+        })
+    
+    db = get_db()
+    masked_email = _mask_email(
+        db.execute(
+            'SELECT email FROM users WHERE user_id = %s',
+            (session.get('pin_recovery_user_id'),)
+        ).fetchone()['email']
+    )
+    
+    return render_template('user/verifyotp-pin.html', masked_email=masked_email)
+
+
+@app.route('/reset-pin', methods=['GET', 'POST'])
+def reset_pin():
+    """
+    Step 3: User enters and confirms new PIN.
+    """
+    if 'pin_recovery_user_id' not in session or not session.get('pin_recovery_otp_verified'):
+        return redirect(url_for('forgot_pin'))
+    
+    if request.method == 'POST':
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Invalid request. Expected JSON.'}), 400
+        
+        pin = data.get('pin', '')
+        confirm_pin = data.get('confirm_pin', '')
+        
+        # Validate PIN format
+        if len(pin) != 4 or not pin.isdigit():
+            return jsonify({'error': 'PIN must be exactly 4 digits.'}), 400
+        
+        if pin != confirm_pin:
+            return jsonify({'error': 'PINs do not match. Please try again.'}), 400
+        
+        # Update PIN in database
+        db = get_db()
+        user_id = session.get('pin_recovery_user_id')
+        pin_hash = generate_password_hash(pin)
+        
+        db.execute(
+            'UPDATE users SET pin_hash = %s WHERE user_id = %s',
+            (pin_hash, user_id)
+        )
+        db.commit()
+        
+        # Clear session
+        session.pop('pin_recovery_user_id', None)
+        session.pop('pin_recovery_contact_no', None)
+        session.pop('pin_recovery_otp_hash', None)
+        session.pop('pin_recovery_otp_expires_at', None)
+        session.pop('pin_recovery_otp_attempts', None)
+        session.pop('pin_recovery_otp_verified', None)
+        
+        return jsonify({
+            'success': True,
+            'message': 'PIN reset successful! You can now sign in with your new PIN.',
+            'redirect_url': url_for('sign_in_page')
+        })
+    
+    return render_template('user/resetpin.html')
+
+
 # Placeholder shop route — Part 4 will flesh this out
 @app.route('/shop')
 def shop_home():

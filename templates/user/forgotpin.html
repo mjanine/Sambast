@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sambast | Forgot PIN</title>
+    <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='image/logo.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/user/usersignin.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="auth-page">
+<!-- ERROR MODAL -->
+<div id="errorModal" class="modal-overlay">
+    <div class="modal-box" role="dialog" aria-modal="true">
+        <h2 class="modal-title">Error</h2>
+        <p id="modalErrorText" class="modal-message">Something went wrong.</p>
+        <button type="button" id="modalOkBtn" class="modal-btn">OK</button>
+    </div>
+</div>
+
+<!-- SUCCESS MODAL -->
+<div id="successModal" class="modal-overlay">
+    <div class="modal-box" role="dialog" aria-modal="true">
+        <h2 class="modal-title">Success</h2>
+        <p id="modalSuccessText" class="modal-message">Operation completed successfully.</p>
+        <button type="button" id="modalSuccessBtn" class="modal-btn">OK</button>
+    </div>
+</div>
+
+    <div class="mobile-container">
+        <header class="header">
+            <img src="{{ url_for('static', filename='image/logo.png') }}" alt="Logo" class="logo-img">
+        </header>
+
+        <main class="auth-content">
+            <h1 class="main-title">Reset Your PIN</h1>
+            <p style="text-align: center; color: #666; margin-bottom: 24px; font-size: 14px;">
+                Enter your registered contact number to receive a recovery code.
+            </p>
+            
+            <form class="auth-form" id="forgotPinForm">
+                <div class="input-field">
+                    <input 
+                        type="tel" 
+                        name="contact_no" 
+                        id="contactNo" 
+                        placeholder="CONTACT NO. (11 DIGITS)" 
+                        inputmode="numeric"
+                        pattern="[0-9]*"
+                        maxlength="11"
+                        required
+                    >
+                </div>
+
+                <button type="submit" class="primary-btn">SEND RECOVERY CODE</button>
+
+                <a href="{{ url_for('sign_in_page') }}" class="forgot-link">Back to Sign In</a>
+            </form>
+        </main>
+
+        <footer class="auth-footer">
+            <p>Don't have an account? <a href="/" class="accent-link">Create an account</a></p>
+        </footer>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const form = document.getElementById('forgotPinForm');
+        
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            const contactNo = document.getElementById('contactNo').value.trim();
+            
+            if (!contactNo || contactNo.length !== 11) {
+                showErrorModal('Contact number must be exactly 11 digits.');
+                return;
+            }
+            
+            const submitButton = form.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.textContent = 'Sending...';
+            
+            fetch('/forgot-pin', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    contact_no: contactNo
+                })
+            })
+            .then(response =>
+                response.json().then(data => ({
+                    ok: response.ok,
+                    data
+                }))
+            )
+            .then(({ ok, data }) => {
+                if (ok) {
+                    showSuccessModal(data.message, () => {
+                        window.location.href = data.redirect_url;
+                    });
+                } else {
+                    showErrorModal(data.error || 'An error occurred.');
+                }
+            })
+            .catch(err => {
+                console.error('Error:', err);
+                showErrorModal('A network error occurred. Please try again.');
+            })
+            .finally(() => {
+                submitButton.disabled = false;
+                submitButton.textContent = 'SEND RECOVERY CODE';
+            });
+        });
+    });
+    
+    function showErrorModal(message) {
+        const modal = document.getElementById("errorModal");
+        const text = document.getElementById("modalErrorText");
+        const okBtn = document.getElementById("modalOkBtn");
+        
+        text.textContent = message;
+        modal.style.display = "flex";
+        
+        okBtn.onclick = () => {
+            modal.style.display = "none";
+        };
+        
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                modal.style.display = "none";
+            }
+        };
+    }
+    
+    function showSuccessModal(message, callback) {
+        const modal = document.getElementById("successModal");
+        const text = document.getElementById("modalSuccessText");
+        const btn = document.getElementById("modalSuccessBtn");
+        
+        text.textContent = message;
+        modal.style.display = "flex";
+        
+        btn.onclick = () => {
+            modal.style.display = "none";
+            if (callback) callback();
+        };
+    }
+    </script>
+</body>
+</html>

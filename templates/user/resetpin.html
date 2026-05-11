@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sambast | Set New PIN</title>
+    <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='image/logo.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/user/usersignin.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="auth-page">
+<!-- ERROR MODAL -->
+<div id="errorModal" class="modal-overlay">
+    <div class="modal-box" role="dialog" aria-modal="true">
+        <h2 class="modal-title">Error</h2>
+        <p id="modalErrorText" class="modal-message">Something went wrong.</p>
+        <button type="button" id="modalOkBtn" class="modal-btn">OK</button>
+    </div>
+</div>
+
+<!-- SUCCESS MODAL -->
+<div id="successModal" class="modal-overlay">
+    <div class="modal-box" role="dialog" aria-modal="true">
+        <h2 class="modal-title">Success</h2>
+        <p id="modalSuccessText" class="modal-message">Your PIN has been reset successfully!</p>
+        <button type="button" id="modalSuccessBtn" class="modal-btn">OK</button>
+    </div>
+</div>
+
+    <div class="mobile-container">
+        <header class="header">
+            <img src="{{ url_for('static', filename='image/logo.png') }}" alt="Logo" class="logo-img">
+        </header>
+
+        <main class="auth-content">
+            <h1 class="main-title">Set New PIN</h1>
+            <p style="text-align: center; color: #666; margin-bottom: 24px; font-size: 14px;">
+                Enter your new 4-digit PIN. You'll use this to sign in.
+            </p>
+            
+            <form class="auth-form" id="resetPinForm">
+                <label style="display: block; margin-bottom: 16px; color: #333; font-weight: 600; font-size: 12px;">
+                    NEW PIN
+                </label>
+                <div class="pin-container" style="margin-bottom: 24px;">
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" required>
+                </div>
+                <input type="hidden" name="pin" id="pinValue">
+
+                <label style="display: block; margin-bottom: 16px; color: #333; font-weight: 600; font-size: 12px;">
+                    CONFIRM PIN
+                </label>
+                <div class="pin-container" style="margin-bottom: 24px;">
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" required>
+                    <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" required>
+                </div>
+                <input type="hidden" name="confirm_pin" id="confirmPinValue">
+
+                <button type="submit" class="primary-btn">RESET PIN</button>
+            </form>
+        </main>
+
+        <footer class="auth-footer">
+            <p>Don't have an account? <a href="/" class="accent-link">Create an account</a></p>
+        </footer>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const form = document.getElementById('resetPinForm');
+        const pinContainers = document.querySelectorAll('.pin-container');
+        const pinInputs = pinContainers[0].querySelectorAll('input');
+        const confirmInputs = pinContainers[1].querySelectorAll('input');
+
+        // ===== PIN AUTO MOVE (NEW PIN) =====
+        pinInputs.forEach((input, index) => {
+            input.addEventListener('input', (e) => {
+                if (e.target.value.length === 1 && index < pinInputs.length - 1) {
+                    pinInputs[index + 1].focus();
+                }
+            });
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && !e.target.value && index > 0) {
+                    pinInputs[index - 1].focus();
+                }
+            });
+        });
+
+        // ===== PIN AUTO MOVE (CONFIRM PIN) =====
+        confirmInputs.forEach((input, index) => {
+            input.addEventListener('input', (e) => {
+                if (e.target.value.length === 1 && index < confirmInputs.length - 1) {
+                    confirmInputs[index + 1].focus();
+                }
+            });
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && !e.target.value && index > 0) {
+                    confirmInputs[index - 1].focus();
+                }
+            });
+        });
+
+        // ===== FORM SUBMIT =====
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            let pin = '';
+            pinInputs.forEach(input => pin += input.value);
+
+            let confirmPin = '';
+            confirmInputs.forEach(input => confirmPin += input.value);
+
+            if (pin.length !== 4 || confirmPin.length !== 4) {
+                showErrorModal('Please enter both PINs completely.');
+                return;
+            }
+
+            const submitButton = form.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.textContent = 'Resetting PIN...';
+
+            fetch('/reset-pin', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    pin: pin,
+                    confirm_pin: confirmPin
+                })
+            })
+            .then(response =>
+                response.json().then(data => ({
+                    ok: response.ok,
+                    data
+                }))
+            )
+            .then(({ ok, data }) => {
+                if (ok) {
+                    showSuccessModal(data.message, () => {
+                        window.location.href = data.redirect_url;
+                    });
+                } else {
+                    showErrorModal(data.error || 'An error occurred.');
+                }
+            })
+            .catch(err => {
+                console.error('Error:', err);
+                showErrorModal('A network error occurred. Please try again.');
+            })
+            .finally(() => {
+                submitButton.disabled = false;
+                submitButton.textContent = 'RESET PIN';
+            });
+        });
+    });
+
+    function showErrorModal(message) {
+        const modal = document.getElementById("errorModal");
+        const text = document.getElementById("modalErrorText");
+        const okBtn = document.getElementById("modalOkBtn");
+
+        text.textContent = message;
+        modal.style.display = "flex";
+
+        okBtn.onclick = null;
+        modal.onclick = null;
+
+        okBtn.onclick = () => {
+            modal.style.display = "none";
+        };
+
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                modal.style.display = "none";
+            }
+        };
+    }
+
+    function showSuccessModal(message, callback) {
+        const modal = document.getElementById("successModal");
+        const text = document.getElementById("modalSuccessText");
+        const btn = document.getElementById("modalSuccessBtn");
+
+        text.textContent = message;
+        modal.style.display = "flex";
+
+        btn.onclick = () => {
+            modal.style.display = "none";
+            if (callback) callback();
+        };
+    }
+    </script>
+</body>
+</html>
