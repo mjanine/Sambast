@@ -3978,7 +3978,7 @@ def inventory_forecast():
             items_with_urgency.append((urgency_score, item))
         
         # Sort by urgency and take top 20
-        items_with_urgency.sort()
+        items_with_urgency.sort(key=lambda x: x[0])
         top_items = [item for _, item in items_with_urgency[:20]]
 
         inventory_data = []
