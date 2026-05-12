@@ -32,7 +32,15 @@
             <p class="instruction-text" style="color: #ff4d4d; margin-top: -6px;">{{ error_message }}</p>
             {% endif %}
 
-            <form class="auth-form" id="verifyOtpForm" action="/verify-otp" method="POST" data-otp-length="{{ otp_length or 6 }}">
+            <form
+                class="auth-form"
+                id="verifyOtpForm"
+                action="/verify-otp"
+                method="POST"
+                data-otp-length="{{ otp_length or 6 }}"
+                data-send-endpoint="{{ url_for('start_verify_otp_user') }}"
+                data-verify-endpoint="{{ url_for('verify_otp_user') }}"
+            >
                 <div class="otp-container">
                     <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>
                     <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" required>

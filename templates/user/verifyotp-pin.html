@@ -29,7 +29,13 @@
                 A 6-digit code has been sent to {{ masked_email }}
             </p>
             
-            <form class="auth-form" id="verifyOtpForm">
+            <form
+                class="auth-form"
+                id="verifyOtpForm"
+                data-otp-length="{{ otp_length or 6 }}"
+                data-send-endpoint="{{ url_for('start_pin_recovery_otp') }}"
+                data-verify-endpoint="{{ url_for('verify_pin_recovery') }}"
+            >
                 <div class="pin-container" style="gap: 8px;">
                     <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
                     <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
@@ -39,6 +45,13 @@
                     <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
                 </div>
                 <input type="hidden" name="otp" id="otpValue">
+
+                <p id="otpErrorMessage" class="instruction-text" style="color: #ff4d4d; min-height: 1.2em; margin-top: 6px;"></p>
+
+                <div class="resend-container">
+                    <p>Didn't receive code?</p>
+                    <button type="button" class="resend-btn" id="resendOtpBtn" data-seconds-left="{{ resend_seconds_left or 0 }}">Resend Code</button>
+                </div>
 
                 <button type="submit" class="primary-btn">VERIFY CODE</button>
 
@@ -51,96 +64,6 @@
         </footer>
     </div>
 
-    <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const form = document.getElementById('verifyOtpForm');
-        const otpInputs = document.querySelectorAll('.pin-container input');
-
-        // ===== OTP AUTO MOVE =====
-        otpInputs.forEach((input, index) => {
-            input.addEventListener('input', (e) => {
-                if (e.target.value.length === 1 && index < otpInputs.length - 1) {
-                    otpInputs[index + 1].focus();
-                }
-            });
-
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Backspace' && !e.target.value && index > 0) {
-                    otpInputs[index - 1].focus();
-                }
-            });
-        });
-
-        // ===== FORM SUBMIT =====
-        form.addEventListener('submit', (e) => {
-            e.preventDefault();
-
-            let otp = '';
-            otpInputs.forEach(input => otp += input.value);
-
-            if (otp.length !== 6) {
-                showErrorModal('Please enter all 6 digits of the recovery code.');
-                return;
-            }
-
-            const submitButton = form.querySelector('button[type="submit"]');
-            submitButton.disabled = true;
-            submitButton.textContent = 'Verifying...';
-
-            fetch('/verify-pin-recovery', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    otp: otp
-                })
-            })
-            .then(response =>
-                response.json().then(data => ({
-                    ok: response.ok,
-                    data
-                }))
-            )
-            .then(({ ok, data }) => {
-                if (ok) {
-                    window.location.href = data.redirect_url;
-                } else {
-                    showErrorModal(data.error || 'Verification failed. Please try again.');
-                }
-            })
-            .catch(err => {
-                console.error('Error:', err);
-                showErrorModal('A network error occurred. Please try again.');
-            })
-            .finally(() => {
-                submitButton.disabled = false;
-                submitButton.textContent = 'VERIFY CODE';
-            });
-        });
-    });
-
-    function showErrorModal(message) {
-        const modal = document.getElementById("errorModal");
-        const text = document.getElementById("modalErrorText");
-        const okBtn = document.getElementById("modalOkBtn");
-
-        text.textContent = message;
-        modal.style.display = "flex";
-
-        okBtn.onclick = null;
-        modal.onclick = null;
-
-        okBtn.onclick = () => {
-            modal.style.display = "none";
-        };
-
-        modal.onclick = (e) => {
-            if (e.target === modal) {
-                modal.style.display = "none";
-            }
-        };
-    }
-    </script>
+    <script src="{{ url_for('static', filename='js/user/verifycode.js') }}"></script>
 </body>
 </html>

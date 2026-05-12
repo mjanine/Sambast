@@ -27,8 +27,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const contactNo = document.getElementById('contactNo').value;
 
         // ===== VALIDATION =====
-        if (!contactNo || pin.length !== 4) {
-            showErrorModal('Please enter your contact number and 4-digit PIN.');
+        if (!/^09\d{9}$/.test(contactNo) || pin.length !== 4) {
+            showErrorModal('Please enter your 11-digit contact number (starting with 09) and 4-digit PIN.');
             return;
         }
 

@@ -29,8 +29,8 @@ contactInput.addEventListener('input', () => {
             return;
         }
 
-        if (!/^\d{11}$/.test(contactNo)) {
-            showErrorModal('Contact number must be exactly 11 digits.');
+        if (!/^09\d{9}$/.test(contactNo)) {
+            showErrorModal('Contact number must be 11 digits starting with 09.');
             return;
         }
 

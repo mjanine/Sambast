@@ -4,12 +4,10 @@ import os
 import json
 import re
 import secrets
-import smtplib
 import threading
 import time
 import math
 from datetime import datetime, timedelta
-from email.message import EmailMessage
 from flask import Flask, render_template, g, request, session, redirect, url_for, flash, jsonify, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -88,7 +86,7 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 USER_OTP_LENGTH = 6
 USER_OTP_EXPIRY_SECONDS = 10 * 60
 USER_OTP_MAX_ATTEMPTS = 5
-USER_OTP_RESEND_COOLDOWN_SECONDS = 60
+USER_OTP_RESEND_COOLDOWN_SECONDS = 30
 USER_OTP_MAX_RESENDS = 3
 
 # Ensure the upload directory exists
@@ -123,10 +121,66 @@ def _mask_email(email):
 
     return f"{masked_local}@{domain_part}"
 
+def _normalize_ph_contact(contact_no):
+    raw = re.sub(r'\D', '', contact_no or '')
+    if len(raw) != 11 or not raw.startswith('09'):
+        return ''
+    return raw
+
+def _to_e164_ph(contact_no):
+    normalized = _normalize_ph_contact(contact_no)
+    if not normalized:
+        return ''
+    return f"+63{normalized[1:]}"
+
+def _mask_contact(contact_no):
+    normalized = _normalize_ph_contact(contact_no)
+    if not normalized:
+        return 'your registered phone number'
+    return f"{normalized[:2]}{'*' * 5}{normalized[-4:]}"
+
+def _otp_resend_seconds_left(last_sent_key):
+    now_ts = int(time.time())
+    last_sent_at = int(session.get(last_sent_key, 0) or 0)
+    return max(0, USER_OTP_RESEND_COOLDOWN_SECONDS - (now_ts - last_sent_at))
+
+def _pending_registration_masked_contact(db):
+    pending_contact = (session.get('pending_contact') or '').strip()
+    if pending_contact:
+        return _mask_contact(pending_contact)
+
+    pending_user_id = session.get('pending_user_id')
+    if not pending_user_id:
+        return 'your registered phone number'
+
+    user = db.execute('SELECT contact_no FROM users WHERE user_id = %s', (pending_user_id,)).fetchone()
+    if not user or not user['contact_no']:
+        return 'your registered phone number'
+
+    session['pending_contact'] = str(user['contact_no']).strip()
+    return _mask_contact(session['pending_contact'])
+
+def _clear_pin_recovery_session():
+    keys = [
+        'pin_recovery_user_id',
+        'pin_recovery_contact_no',
+        'pin_recovery_email',
+        'pin_recovery_name',
+        'pin_recovery_otp_hash',
+        'pin_recovery_otp_expires_at',
+        'pin_recovery_otp_attempts',
+        'pin_recovery_otp_last_sent_at',
+        'pin_recovery_otp_resend_count',
+        'pin_recovery_otp_verified'
+    ]
+    for key in keys:
+        session.pop(key, None)
+
 def _clear_pending_registration_session(keep_user_id=False):
     keys = [
         'pending_user_id',
         'pending_contact',
+        'pending_contact_e164',
         'pending_email',
         'pending_otp_hash',
         'pending_otp_expires_at',
@@ -141,50 +195,26 @@ def _clear_pending_registration_session(keep_user_id=False):
             continue
         session.pop(key, None)
 
-def _send_email_message(recipient, subject, body):
-    smtp_host = _env_first('SMTP_HOST') or 'smtp.gmail.com'
-    smtp_port_text = _env_first('SMTP_PORT') or '587'
-    smtp_username = _env_first('SMTP_USER', 'SMTP_EMAIL', 'EMAIL_ADDRESS', 'GMAIL_USER')
-    smtp_password = _env_first('SMTP_PASSWORD', 'SMTP_APP_PASSWORD', 'EMAIL_PASSWORD', 'GMAIL_APP_PASSWORD')
-    sender_email = _env_first('SMTP_FROM', 'EMAIL_FROM') or smtp_username
-    use_ssl = (_env_first('SMTP_USE_SSL') or '').lower() in ('1', 'true', 'yes')
+def _send_otp_email(to_name, to_email, otp_code, otp_purpose, otp_subject):
+    settings = _get_emailjs_settings()
+    template_id = settings.get('template_cancelled')
+    if not _emailjs_enabled(settings) or not template_id:
+        return False, 'EmailJS not configured.'
 
-    if not smtp_username or not smtp_password:
-        raise RuntimeError('Email service is not configured. Please set SMTP_USER and SMTP_APP_PASSWORD in .env.')
+    expires_minutes = max(1, int(USER_OTP_EXPIRY_SECONDS // 60))
+    template_params = {
+        'to_name': to_name or 'Customer',
+        'to_email': to_email,
+        'otp_code': otp_code,
+        'otp_purpose': otp_purpose,
+        'otp_expires_minutes': expires_minutes,
+        'otp_subject': otp_subject,
+        'otp_heading': 'Your verification code',
+        'otp_message': f"Use the code below to {otp_purpose.lower()}.",
+        'otp_note': 'If you did not request this, you can safely ignore this email.'
+    }
 
-    try:
-        smtp_port = int(smtp_port_text)
-    except ValueError as exc:
-        raise RuntimeError('SMTP_PORT must be a valid integer.') from exc
-
-    msg = EmailMessage()
-    msg['Subject'] = subject
-    msg['From'] = sender_email
-    msg['To'] = recipient
-    msg.set_content(body)
-
-    try:
-        if use_ssl:
-            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=20) as server:
-                server.login(smtp_username, smtp_password)
-                server.send_message(msg)
-        else:
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
-                server.starttls()
-                server.login(smtp_username, smtp_password)
-                server.send_message(msg)
-    except Exception as exc:
-        raise RuntimeError('Failed to send OTP email. Please verify SMTP credentials and network access.') from exc
-
-def _send_user_registration_otp_email(recipient_email, otp_code):
-    subject = 'Sambast Registration Verification Code'
-    body = (
-        'Your Sambast verification code is:\n\n'
-        f'{otp_code}\n\n'
-        f'This code expires in {USER_OTP_EXPIRY_SECONDS // 60} minutes. '
-        'If you did not request this, please ignore this email.'
-    )
-    _send_email_message(recipient_email, subject, body)
+    return _send_emailjs_message(template_id, template_params)
 
 def _get_emailjs_settings():
     return {
@@ -251,18 +281,53 @@ def _build_order_email_payload(db, order_id, status_override=None, cancellation_
 
     status_value = status_override or order_row['status'] or 'Pending'
     cancellation_reason = cancellation_reason_override or order_row['cancellation_reason'] or ''
+    cancellation_reason = cancellation_reason.strip()
+
+    normalized_status = str(status_value or '').strip().lower()
+    customer_name = order_row['customer_name'] or 'Customer'
+
+    if normalized_status == 'ready':
+        status_label = 'Ready for Pick-up'
+        status_headline = 'Your Order is Ready for Pick-up'
+        status_message = f"Hi {customer_name}, your Sambast order is now ready for pick-up."
+        status_note = 'Please bring your order number upon pickup.'
+        status_color = '#458500'
+        status_subject = f"Order Ready for Pick-up #{order_row['order_id']}!"
+    elif normalized_status == 'cancelled':
+        status_label = 'Cancelled'
+        status_headline = 'Your Order Was Cancelled'
+        status_message = f"Hi {customer_name}, your Sambast order has been cancelled."
+        status_note = 'If you have questions, please contact us.'
+        status_color = '#a6171c'
+        status_subject = f"Order Cancelled #{order_row['order_id']}"
+    else:
+        status_label = status_value.title() if status_value else 'Order Update'
+        status_headline = f"Order Update: {status_label}"
+        status_message = f"Hi {customer_name}, your Sambast order status is now {status_label.lower()}."
+        status_note = 'You can view order details in your account.'
+        status_color = '#1A323E'
+        status_subject = f"Order Update #{order_row['order_id']}"
+
+    cancellation_reason_line = f"Reason: {cancellation_reason}" if cancellation_reason else ''
 
     return {
-        'customer_name': order_row['customer_name'] or 'Customer',
+        'customer_name': customer_name,
         'customer_email': customer_email,
         'order_id': order_row['order_id'],
         'order_no': order_row['order_no'],
         'status': status_value,
+        'status_label': status_label,
+        'status_headline': status_headline,
+        'status_message': status_message,
+        'status_note': status_note,
+        'status_color': status_color,
+        'status_subject': status_subject,
         'total_price': order_row['total_price'] or 0,
         'total_price_display': _format_currency(order_row['total_price'] or 0),
         'item_lines': item_lines,
         'items_summary': "\n".join(item_lines),
-        'cancellation_reason': cancellation_reason.strip()
+        'cancellation_reason': cancellation_reason,
+        'cancellation_reason_line': cancellation_reason_line
     }
 
 def _send_emailjs_message(template_id, template_params):
@@ -305,9 +370,16 @@ def _queue_order_status_email(payload, template_key):
         'order_no': payload['order_no'],
         'order_id': payload['order_id'],
         'status': payload['status'],
+        'status_label': payload.get('status_label', payload['status']),
+        'status_headline': payload.get('status_headline', 'Order Update'),
+        'status_message': payload.get('status_message', ''),
+        'status_note': payload.get('status_note', ''),
+        'status_color': payload.get('status_color', '#1A323E'),
+        'status_subject': payload.get('status_subject', f"Order Update #{payload['order_id']}"),
         'total_price': payload['total_price_display'],
         'items_summary': payload['items_summary'],
-        'cancellation_reason': payload['cancellation_reason'] or 'N/A'
+        'cancellation_reason': payload.get('cancellation_reason', ''),
+        'cancellation_reason_line': payload.get('cancellation_reason_line', '')
     }
 
     def _send_async():
@@ -317,15 +389,17 @@ def _queue_order_status_email(payload, template_key):
 
     threading.Thread(target=_send_async, daemon=True).start()
 
-def _issue_user_registration_otp(db, user_id, recipient_email, is_resend=False):
+def _issue_session_otp(db, user_id, recipient_name, recipient_email, otp_purpose, otp_subject, prefix, is_resend=False):
     now_ts = int(time.time())
+    resend_count_key = f'{prefix}_otp_resend_count'
+    last_sent_key = f'{prefix}_otp_last_sent_at'
 
     if is_resend:
-        resend_count = int(session.get('pending_otp_resend_count', 0) or 0)
+        resend_count = int(session.get(resend_count_key, 0) or 0)
         if resend_count >= USER_OTP_MAX_RESENDS:
-            return False, 'Resend limit reached. Please restart registration.', None
+            return False, 'Resend limit reached. Please restart the verification flow.', None
 
-        last_sent_at = int(session.get('pending_otp_last_sent_at', 0) or 0)
+        last_sent_at = int(session.get(last_sent_key, 0) or 0)
         retry_after = USER_OTP_RESEND_COOLDOWN_SECONDS - (now_ts - last_sent_at)
         if retry_after > 0:
             return False, f'Please wait {retry_after} seconds before resending.', retry_after
@@ -333,20 +407,100 @@ def _issue_user_registration_otp(db, user_id, recipient_email, is_resend=False):
     otp_code = _generate_numeric_otp()
     otp_hash = generate_password_hash(otp_code)
 
-    _send_user_registration_otp_email(recipient_email, otp_code)
+    success, error_message = _send_otp_email(
+        recipient_name,
+        recipient_email,
+        otp_code,
+        otp_purpose,
+        otp_subject
+    )
+    if not success:
+        return False, error_message or 'Unable to send OTP email.', None
 
-    session['pending_otp_hash'] = otp_hash
-    session['pending_otp_expires_at'] = now_ts + USER_OTP_EXPIRY_SECONDS
-    session['pending_otp_attempts'] = 0
-    session['pending_otp_last_sent_at'] = now_ts
+    session[f'{prefix}_otp_hash'] = otp_hash
+    session[f'{prefix}_otp_expires_at'] = now_ts + USER_OTP_EXPIRY_SECONDS
+    session[f'{prefix}_otp_attempts'] = 0
+    session[last_sent_key] = now_ts
 
     if is_resend:
-        session['pending_otp_resend_count'] = int(session.get('pending_otp_resend_count', 0) or 0) + 1
+        session[resend_count_key] = int(session.get(resend_count_key, 0) or 0) + 1
     else:
-        session['pending_otp_resend_count'] = 0
+        session[resend_count_key] = 0
 
-    db.execute('UPDATE users SET otp_code = %s WHERE user_id = %s', (otp_hash, user_id))
+    if db is not None and user_id is not None:
+        db.execute('UPDATE users SET otp_code = %s WHERE user_id = %s', (otp_hash, user_id))
     return True, None, None
+
+def _issue_user_registration_otp(db, user_id, recipient_name, recipient_email, is_resend=False):
+    return _issue_session_otp(
+        db,
+        user_id,
+        recipient_name,
+        recipient_email,
+        'complete your Sambast registration',
+        'Sambast Registration Verification Code',
+        'pending',
+        is_resend=is_resend
+    )
+
+def _issue_pin_recovery_otp(db, user_id, recipient_name, recipient_email, is_resend=False):
+    return _issue_session_otp(
+        db,
+        user_id,
+        recipient_name,
+        recipient_email,
+        'reset your Sambast PIN',
+        'Sambast PIN Recovery Code',
+        'pin_recovery',
+        is_resend=is_resend
+    )
+
+def _issue_admin_reset_otp(recipient_name, recipient_email, is_resend=False):
+    return _issue_session_otp(
+        None,
+        None,
+        recipient_name,
+        recipient_email,
+        'reset your Sambast admin password',
+        'Sambast Admin Password Reset Code',
+        'admin_reset',
+        is_resend=is_resend
+    )
+
+def _clear_session_otp_state(prefix):
+    keys = [
+        f'{prefix}_otp_hash',
+        f'{prefix}_otp_expires_at',
+        f'{prefix}_otp_attempts',
+        f'{prefix}_otp_last_sent_at',
+        f'{prefix}_otp_resend_count'
+    ]
+    for key in keys:
+        session.pop(key, None)
+
+def _validate_session_otp(prefix, otp_code):
+    otp_value = (otp_code or '').strip()
+    if len(otp_value) != USER_OTP_LENGTH or not otp_value.isdigit():
+        return False, f'Please enter a {USER_OTP_LENGTH}-digit code.'
+
+    otp_hash = session.get(f'{prefix}_otp_hash')
+    expires_at = int(session.get(f'{prefix}_otp_expires_at', 0) or 0)
+    attempts = int(session.get(f'{prefix}_otp_attempts', 0) or 0)
+
+    if not otp_hash or not expires_at:
+        return False, 'Verification code is missing. Please request a new one.'
+
+    if int(time.time()) > expires_at:
+        return False, 'Verification code has expired. Please request a new one.'
+
+    if attempts >= USER_OTP_MAX_ATTEMPTS:
+        return False, 'Too many incorrect attempts. Please request a new code.'
+
+    if not check_password_hash(otp_hash, otp_value):
+        session[f'{prefix}_otp_attempts'] = attempts + 1
+        return False, 'Invalid verification code. Please try again.'
+
+    return True, None
 
 def _pending_registration_masked_email(db):
     pending_email = (session.get('pending_email') or '').strip().lower()
@@ -2950,7 +3104,7 @@ def cancel_order(order_id):
             status_override='Cancelled',
             cancellation_reason_override=cancel_reason
         )
-        _queue_order_status_email(email_payload, 'template_cancelled')
+        _queue_order_status_email(email_payload, 'template_ready')
     return redirect(url_for('admin_orders'))
 
 # --- INVENTORY MANAGEMENT (CRUD) ---
@@ -3876,26 +4030,51 @@ def admin_logout():
 @app.route('/admin/forgot-password', methods=['GET', 'POST'])
 def forgot_password():
     if request.method == 'POST':
-        email = request.form.get('email')
+        email = (request.form.get('email') or '').strip().lower()
         db = get_db()
         admin = db.execute('SELECT * FROM admin WHERE email = %s', (email,)).fetchone()
         if admin:
-            session['reset_email'] = email
-            session['temp_otp'] = "123456" 
+            session['reset_email'] = (admin.get('email') or '').strip().lower()
+            session['admin_reset_verified'] = False
+
+            recipient_name = admin.get('username') or 'Admin'
+            success, error_message, retry_after = _issue_admin_reset_otp(
+                recipient_name,
+                session['reset_email'],
+                is_resend=False
+            )
+
+            if not success:
+                flash(error_message or 'Unable to send verification code.')
+                return render_template(
+                    'admin/verifyemail.html',
+                    masked_email=_mask_email(session['reset_email'])
+                )
+
             return redirect(url_for('verify_otp'))
         flash("Email not found.")
-    return render_template('admin/verifyemail.html')
+    masked_email = _mask_email(session.get('reset_email'))
+    return render_template('admin/verifyemail.html', masked_email=masked_email)
 
 @app.route('/admin/verify-otp', methods=['GET', 'POST'])
 def verify_otp():
     if request.method == 'POST':
-        if request.form.get('otp') == session.get('temp_otp'):
+        otp_code = (request.form.get('otp') or '').strip()
+        is_valid, validation_error = _validate_session_otp('admin_reset', otp_code)
+        if is_valid:
+            session['admin_reset_verified'] = True
+            _clear_session_otp_state('admin_reset')
             return redirect(url_for('reset_password'))
-        flash("Invalid OTP")
-    return render_template('admin/verifyemail.html')
+        flash(validation_error or 'Invalid OTP')
+
+    masked_email = _mask_email(session.get('reset_email'))
+    return render_template('admin/verifyemail.html', masked_email=masked_email)
 
 @app.route('/admin/reset-password', methods=['GET', 'POST'])
 def reset_password():
+    if not session.get('admin_reset_verified') or not session.get('reset_email'):
+        return redirect(url_for('forgot_password'))
+
     if request.method == 'POST':
         new_password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
@@ -3906,7 +4085,8 @@ def reset_password():
         db = get_db()
         db.execute('UPDATE admin SET password_hash = %s WHERE email = %s', (hashed, session.get('reset_email')))
         db.commit()
-        session.pop('temp_otp', None)
+        session.pop('admin_reset_verified', None)
+        session.pop('reset_email', None)
         flash("Password reset successful!")
         return redirect(url_for('admin_login_page'))
     return render_template('admin/createpass.html')
@@ -4185,8 +4365,14 @@ def register():
     if not full_name or not contact_no or not email:
         return jsonify({'error': 'Please fill in all fields.'}), 400
 
-    if not re.fullmatch(r'^\d{11}$', contact_no):
-        return jsonify({'error': 'Contact number must be exactly 11 digits.'}), 400
+    normalized_contact = _normalize_ph_contact(contact_no)
+    if not normalized_contact:
+        return jsonify({'error': 'Contact number must be 11 digits starting with 09.'}), 400
+
+    contact_no = normalized_contact
+    contact_e164 = _to_e164_ph(contact_no)
+    if not contact_e164:
+        return jsonify({'error': 'Contact number must be a valid Philippines mobile number.'}), 400
 
     if not _validate_email_format(email):
         return jsonify({'error': 'Please enter a valid email address.'}), 400
@@ -4235,20 +4421,9 @@ def register():
         _clear_pending_registration_session()
         session['pending_user_id'] = pending_user_id
         session['pending_contact'] = contact_no
+        session['pending_contact_e164'] = contact_e164
         session['pending_email'] = email
         session['pending_otp_verified'] = False
-
-        otp_sent, otp_error, _ = _issue_user_registration_otp(
-            db,
-            pending_user_id,
-            email,
-            is_resend=False
-        )
-
-        if not otp_sent:
-            db.rollback()
-            _clear_pending_registration_session()
-            return jsonify({'error': otp_error or 'Unable to send verification code.'}), 503
 
         db.commit()
     except psycopg2.IntegrityError:
@@ -4280,45 +4455,22 @@ def verify_otp_user():
     error_message = None
 
     if request.method == 'POST':
-        submitted_otp = (request.form.get('otp') or '').strip()
+        data = request.get_json(silent=True) or {}
+        otp_code = (data.get('otp') or data.get('otp_code') or request.form.get('otp') or '').strip()
 
-        if not re.fullmatch(rf'^\d{{{USER_OTP_LENGTH}}}$', submitted_otp):
-            error_message = f'Please enter a valid {USER_OTP_LENGTH}-digit code.'
-        else:
-            now_ts = int(time.time())
-            expires_at = int(session.get('pending_otp_expires_at', 0) or 0)
-            current_attempts = int(session.get('pending_otp_attempts', 0) or 0)
-            otp_hash = session.get('pending_otp_hash')
+        is_valid, validation_error = _validate_session_otp('pending', otp_code)
+        if not is_valid:
+            return jsonify({'error': validation_error}), 400
 
-            if now_ts > expires_at:
-                error_message = 'Verification code expired. Please resend a new code.'
-            elif current_attempts >= USER_OTP_MAX_ATTEMPTS:
-                error_message = 'Too many invalid attempts. Please resend a new code.'
-            elif not otp_hash:
-                error_message = 'No active verification code found. Please resend a new code.'
-            elif check_password_hash(otp_hash, submitted_otp):
-                session['pending_otp_verified'] = True
-                session.pop('pending_otp_hash', None)
-                session.pop('pending_otp_expires_at', None)
-                session.pop('pending_otp_attempts', None)
+        session['pending_otp_verified'] = True
+        _clear_session_otp_state('pending')
 
-                db.execute('UPDATE users SET otp_code = NULL WHERE user_id = %s', (pending_user_id,))
-                db.commit()
-                return redirect(url_for('set_pin'))
-            else:
-                current_attempts += 1
-                session['pending_otp_attempts'] = current_attempts
-
-                remaining_attempts = USER_OTP_MAX_ATTEMPTS - current_attempts
-                if remaining_attempts > 0:
-                    error_message = f'Invalid code. {remaining_attempts} attempt(s) remaining.'
-                else:
-                    error_message = 'Too many invalid attempts. Please resend a new code.'
+        db.execute('UPDATE users SET otp_code = NULL WHERE user_id = %s', (pending_user_id,))
+        db.commit()
+        return jsonify({'success': True, 'redirect_url': url_for('set_pin')})
 
     masked_email = _pending_registration_masked_email(db)
-    now_ts = int(time.time())
-    last_sent_at = int(session.get('pending_otp_last_sent_at', 0) or 0)
-    resend_seconds_left = max(0, USER_OTP_RESEND_COOLDOWN_SECONDS - (now_ts - last_sent_at))
+    resend_seconds_left = _otp_resend_seconds_left('pending_otp_last_sent_at')
 
     return render_template(
         'user/verifycode.html',
@@ -4329,8 +4481,8 @@ def verify_otp_user():
     )
 
 
-@app.route('/verify-otp/resend', methods=['POST'])
-def resend_verify_otp_user():
+@app.route('/verify-otp/start', methods=['POST'])
+def start_verify_otp_user():
     pending_user_id = session.get('pending_user_id')
     if not pending_user_id:
         return jsonify({'error': 'Registration session expired. Please register again.'}), 401
@@ -4338,36 +4490,50 @@ def resend_verify_otp_user():
     if session.get('pending_otp_verified'):
         return jsonify({'success': True, 'message': 'Already verified.'})
 
+    data = request.get_json(silent=True) or {}
+    is_resend = bool(data.get('resend'))
+
     db = get_db()
-    pending_email = (session.get('pending_email') or '').strip().lower()
-    if not pending_email:
-        user = db.execute('SELECT email FROM users WHERE user_id = %s', (pending_user_id,)).fetchone()
-        if not user or not user['email']:
-            return jsonify({'error': 'No email found for this registration. Please register again.'}), 400
-        pending_email = user['email'].strip().lower()
-        session['pending_email'] = pending_email
+    user_row = db.execute(
+        'SELECT name, email FROM users WHERE user_id = %s',
+        (pending_user_id,)
+    ).fetchone()
 
-    try:
-        otp_sent, otp_error, retry_after = _issue_user_registration_otp(
-            db,
-            pending_user_id,
-            pending_email,
-            is_resend=True
-        )
+    recipient_email = (session.get('pending_email') or '').strip().lower()
+    if not recipient_email and user_row and user_row.get('email'):
+        recipient_email = user_row['email'].strip().lower()
+        session['pending_email'] = recipient_email
 
-        if not otp_sent:
-            if retry_after is not None:
-                return jsonify({'error': otp_error, 'retry_after': retry_after}), 429
-            return jsonify({'error': otp_error or 'Unable to resend code.'}), 400
+    if not recipient_email:
+        return jsonify({'error': 'No email found for this registration.'}), 400
 
-        db.commit()
-        return jsonify({'success': True, 'message': 'A new verification code was sent to your email.'})
-    except RuntimeError as exc:
-        db.rollback()
-        return jsonify({'error': str(exc)}), 503
-    except Exception:
-        db.rollback()
-        return jsonify({'error': 'Unable to resend code right now. Please try again.'}), 500
+    recipient_name = user_row['name'] if user_row and user_row.get('name') else 'Customer'
+
+    success, error_message, retry_after = _issue_user_registration_otp(
+        db,
+        pending_user_id,
+        recipient_name,
+        recipient_email,
+        is_resend=is_resend
+    )
+
+    if not success:
+        status_code = 429 if retry_after else 503
+        response = {'error': error_message or 'Unable to send verification code.'}
+        if retry_after:
+            response['retry_after'] = retry_after
+        return jsonify(response), status_code
+
+    return jsonify({
+        'success': True,
+        'cooldown_seconds': USER_OTP_RESEND_COOLDOWN_SECONDS,
+        'message': 'Verification code sent.'
+    })
+
+
+@app.route('/verify-otp/resend', methods=['POST'])
+def resend_verify_otp_user():
+    return start_verify_otp_user()
 
 
 # =============================================================================
@@ -4444,8 +4610,11 @@ def sign_in():
     if not data:
         return jsonify({'error': 'Invalid request. Expected JSON.'}), 400
         
-    contact_no = data.get('contact_no', '').strip()
+    contact_no = _normalize_ph_contact(data.get('contact_no', '').strip())
     pin        = data.get('pin', '')
+
+    if not contact_no:
+        return jsonify({'error': 'Contact number must be 11 digits starting with 09.'}), 400
 
     db   = get_db()
     user = db.execute(
@@ -4484,7 +4653,7 @@ def sign_out():
 def forgot_pin():
     """
     Step 1: User enters contact number to start PIN recovery.
-    OTP is sent to the email associated with the account.
+    OTP is sent to the email address associated with the account.
     """
     if request.method == 'POST':
         data = request.get_json()
@@ -4494,52 +4663,39 @@ def forgot_pin():
         contact_no = data.get('contact_no', '').strip()
         
         # Validate contact number format
-        if not re.fullmatch(r'^\d{11}$', contact_no):
-            return jsonify({'error': 'Contact number must be exactly 11 digits.'}), 400
+        normalized_contact = _normalize_ph_contact(contact_no)
+        if not normalized_contact:
+            return jsonify({'error': 'Contact number must be 11 digits starting with 09.'}), 400
+
+        contact_no = normalized_contact
+        contact_e164 = _to_e164_ph(contact_no)
+        if not contact_e164:
+            return jsonify({'error': 'Contact number must be a valid Philippines mobile number.'}), 400
         
         db = get_db()
         user = db.execute(
-            'SELECT user_id, email FROM users WHERE contact_no = %s',
+            'SELECT user_id, email, name FROM users WHERE contact_no = %s',
             (contact_no,)
         ).fetchone()
         
         if not user:
             return jsonify({'error': 'No account found with that contact number.'}), 404
         
-        if not user['email']:
-            return jsonify({
-                'error': 'No email address on file. Cannot send PIN recovery code. Please contact support.'
-            }), 403
-        
-        # Generate and send OTP
-        now_ts = int(time.time())
-        otp_code = _generate_numeric_otp()
-        otp_hash = generate_password_hash(otp_code)
-        
-        # Send OTP email
-        subject = 'Sambast PIN Recovery Code'
-        body = (
-            'Your Sambast PIN recovery code is:\n\n'
-            f'{otp_code}\n\n'
-            f'This code expires in {USER_OTP_EXPIRY_SECONDS // 60} minutes. '
-            'If you did not request this, please ignore this email.'
-        )
-        try:
-            _send_email_message(user['email'], subject, body)
-        except RuntimeError as e:
-            return jsonify({'error': str(e)}), 500
-        
-        # Store in session
+        recipient_email = (user.get('email') or '').strip().lower()
+        if not recipient_email:
+            return jsonify({'error': 'No email address is registered for this account.'}), 400
+
+        _clear_pin_recovery_session()
         session['pin_recovery_user_id'] = user['user_id']
         session['pin_recovery_contact_no'] = contact_no
-        session['pin_recovery_otp_hash'] = otp_hash
-        session['pin_recovery_otp_expires_at'] = now_ts + USER_OTP_EXPIRY_SECONDS
-        session['pin_recovery_otp_attempts'] = 0
-        
-        masked_email = _mask_email(user['email'])
+        session['pin_recovery_email'] = recipient_email
+        session['pin_recovery_name'] = user.get('name') or 'Customer'
+        session['pin_recovery_otp_verified'] = False
+
+        masked_email = _mask_email(recipient_email)
         return jsonify({
             'success': True,
-            'message': f'OTP sent to {masked_email}',
+            'message': f'Verification code will be sent to {masked_email}',
             'redirect_url': url_for('verify_pin_recovery')
         })
     
@@ -4555,52 +4711,86 @@ def verify_pin_recovery():
         return redirect(url_for('forgot_pin'))
     
     if request.method == 'POST':
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': 'Invalid request. Expected JSON.'}), 400
-        
-        otp_code = data.get('otp', '').strip()
-        
-        # Check expiry
-        now_ts = int(time.time())
-        otp_expires_at = session.get('pin_recovery_otp_expires_at', 0)
-        if now_ts > otp_expires_at:
-            session.pop('pin_recovery_user_id', None)
-            session.pop('pin_recovery_otp_hash', None)
-            return jsonify({'error': 'OTP has expired. Please restart PIN recovery.'}), 401
-        
-        # Check attempts
-        attempts = int(session.get('pin_recovery_otp_attempts', 0) or 0)
-        if attempts >= USER_OTP_MAX_ATTEMPTS:
-            session.pop('pin_recovery_user_id', None)
-            session.pop('pin_recovery_otp_hash', None)
-            return jsonify({'error': 'Too many failed attempts. Please restart PIN recovery.'}), 401
-        
-        # Verify OTP
-        otp_hash = session.get('pin_recovery_otp_hash')
-        if not otp_hash or not check_password_hash(otp_hash, otp_code):
-            session['pin_recovery_otp_attempts'] = attempts + 1
-            remaining = USER_OTP_MAX_ATTEMPTS - (attempts + 1)
-            return jsonify({
-                'error': f'Incorrect OTP. {remaining} attempts remaining.'
-            }), 401
-        
-        # OTP verified
+        data = request.get_json(silent=True) or {}
+        otp_code = (data.get('otp') or data.get('otp_code') or request.form.get('otp') or '').strip()
+
+        is_valid, validation_error = _validate_session_otp('pin_recovery', otp_code)
+        if not is_valid:
+            return jsonify({'error': validation_error}), 400
+
         session['pin_recovery_otp_verified'] = True
+        _clear_session_otp_state('pin_recovery')
         return jsonify({
             'success': True,
             'redirect_url': url_for('reset_pin')
         })
     
     db = get_db()
-    masked_email = _mask_email(
-        db.execute(
-            'SELECT email FROM users WHERE user_id = %s',
-            (session.get('pin_recovery_user_id'),)
-        ).fetchone()['email']
+    user_row = db.execute(
+        'SELECT email FROM users WHERE user_id = %s',
+        (session.get('pin_recovery_user_id'),)
+    ).fetchone()
+    email_value = (session.get('pin_recovery_email') or '').strip().lower()
+    if not email_value and user_row and user_row.get('email'):
+        email_value = user_row['email'].strip().lower()
+        session['pin_recovery_email'] = email_value
+
+    masked_email = _mask_email(email_value)
+
+    resend_seconds_left = _otp_resend_seconds_left('pin_recovery_otp_last_sent_at')
+    return render_template(
+        'user/verifyotp-pin.html',
+        masked_email=masked_email,
+        otp_length=USER_OTP_LENGTH,
+        resend_seconds_left=resend_seconds_left
     )
-    
-    return render_template('user/verifyotp-pin.html', masked_email=masked_email)
+
+
+@app.route('/verify-pin-recovery/start', methods=['POST'])
+def start_pin_recovery_otp():
+    if 'pin_recovery_user_id' not in session:
+        return jsonify({'error': 'PIN recovery session expired. Please try again.'}), 401
+
+    data = request.get_json(silent=True) or {}
+    is_resend = bool(data.get('resend'))
+
+    db = get_db()
+    user_row = db.execute(
+        'SELECT name, email FROM users WHERE user_id = %s',
+        (session.get('pin_recovery_user_id'),)
+    ).fetchone()
+
+    recipient_email = (session.get('pin_recovery_email') or '').strip().lower()
+    if not recipient_email and user_row and user_row.get('email'):
+        recipient_email = user_row['email'].strip().lower()
+        session['pin_recovery_email'] = recipient_email
+
+    if not recipient_email:
+        return jsonify({'error': 'No email address found for this recovery request.'}), 400
+
+    recipient_name = session.get('pin_recovery_name') or (user_row['name'] if user_row else 'Customer')
+    session['pin_recovery_name'] = recipient_name
+
+    success, error_message, retry_after = _issue_pin_recovery_otp(
+        db,
+        session.get('pin_recovery_user_id'),
+        recipient_name,
+        recipient_email,
+        is_resend=is_resend
+    )
+
+    if not success:
+        status_code = 429 if retry_after else 503
+        response = {'error': error_message or 'Unable to send recovery code.'}
+        if retry_after:
+            response['retry_after'] = retry_after
+        return jsonify(response), status_code
+
+    return jsonify({
+        'success': True,
+        'cooldown_seconds': USER_OTP_RESEND_COOLDOWN_SECONDS,
+        'message': 'Recovery code sent.'
+    })
 
 
 @app.route('/reset-pin', methods=['GET', 'POST'])
@@ -4638,12 +4828,7 @@ def reset_pin():
         db.commit()
         
         # Clear session
-        session.pop('pin_recovery_user_id', None)
-        session.pop('pin_recovery_contact_no', None)
-        session.pop('pin_recovery_otp_hash', None)
-        session.pop('pin_recovery_otp_expires_at', None)
-        session.pop('pin_recovery_otp_attempts', None)
-        session.pop('pin_recovery_otp_verified', None)
+        _clear_pin_recovery_session()
         
         return jsonify({
             'success': True,

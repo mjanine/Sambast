@@ -35,7 +35,7 @@
         <main class="auth-content">
             <h1 class="main-title">Reset Your PIN</h1>
             <p style="text-align: center; color: #666; margin-bottom: 24px; font-size: 14px;">
-                Enter your registered contact number to receive a recovery code.
+                Enter your registered contact number to receive a recovery code via email.
             </p>
             
             <form class="auth-form" id="forgotPinForm">
@@ -72,8 +72,8 @@
             
             const contactNo = document.getElementById('contactNo').value.trim();
             
-            if (!contactNo || contactNo.length !== 11) {
-                showErrorModal('Contact number must be exactly 11 digits.');
+            if (!/^09\d{9}$/.test(contactNo)) {
+                showErrorModal('Contact number must be 11 digits starting with 09.');
                 return;
             }
             
