@@ -1059,7 +1059,7 @@ def _inventory_signature(db):
     order_stats = db.execute('''
         SELECT
             COALESCE(COUNT(*), 0) AS order_count,
-            COALESCE(MAX(created_at), '') AS latest_order_at
+            COALESCE(MAX(created_at)::text, '') AS latest_order_at
         FROM orders
         WHERE status != 'Cancelled'
     ''').fetchone()
@@ -1541,7 +1541,7 @@ def _analytics_signature(db):
     order_stats = db.execute('''
         SELECT
             COALESCE(COUNT(*), 0) AS total_orders,
-            COALESCE(MAX(created_at), '') AS latest_order_at
+            COALESCE(MAX(created_at)::text, '') AS latest_order_at
         FROM orders
     ''').fetchone()
 
