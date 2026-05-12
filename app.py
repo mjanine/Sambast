@@ -7,6 +7,7 @@ import secrets
 import threading
 import time
 import math
+import signal
 from datetime import datetime, timedelta
 from flask import Flask, render_template, g, request, session, redirect, url_for, flash, jsonify, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -3966,8 +3967,22 @@ def inventory_forecast():
                 history_map[pid] = []
             history_map[pid].append(f"{row['sales_month']}: {row['monthly_sold']}")
 
-        inventory_data = []
+        # Prioritize items by urgency: high stock risk (low stock, high sales) first
+        items_with_urgency = []
         for item in items_30d:
+            stock = int(item['stock_status']) if item['stock_status'] is not None else 0
+            sold_30d = int(item['sold_30d']) if item['sold_30d'] is not None else 0
+            projected_14d = int(math.ceil((sold_30d / 30.0) * 14)) if sold_30d > 0 else 0
+            # Priority score: lower stock + higher sales = higher urgency
+            urgency_score = projected_14d - stock if projected_14d > stock else stock + 1000
+            items_with_urgency.append((urgency_score, item))
+        
+        # Sort by urgency and take top 20
+        items_with_urgency.sort()
+        top_items = [item for _, item in items_with_urgency[:20]]
+
+        inventory_data = []
+        for item in top_items:
             pid = item['product_id']
             trend_str = ", ".join(history_map.get(pid, ["No history"]))
             inventory_data.append(f"{item['name']}: {item['stock_status']} in stock, {item['sold_30d']} sold (last 30d). Monthly Trend: {trend_str}")
@@ -4007,7 +4022,19 @@ Rules:
 - Keep row count <= 20.
 - No markdown. No code fences. No HTML."""
 
-        response = ai_model.generate_content(prompt)
+        # Timeout handler for Render deployment
+        def timeout_handler(signum, frame):
+            raise TimeoutError("Gemini request exceeded 15 seconds")
+        
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(15)  # 15-second timeout
+        try:
+            response = ai_model.generate_content(prompt)
+            signal.alarm(0)  # Cancel the alarm
+        except TimeoutError:
+            signal.alarm(0)  # Cancel the alarm
+            raise TimeoutError("AI forecast request timed out; falling back to deterministic forecast.")
+        
         parsed = _normalize_forecast_payload(_safe_json_loads(response.text))
         if not parsed or not parsed.get('table', {}).get('rows'):
             parsed = fallback_report
