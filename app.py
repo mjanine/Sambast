@@ -12,7 +12,6 @@ from flask import Flask, render_template, g, request, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
-from google import genai
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -26,13 +25,54 @@ from db_pg import get_db, close_db
 # --- AI SETUP ---
 load_dotenv() # Loads the .env file
 
+try:
+    import certifi
+    ssl_cert_file = os.getenv("SSL_CERT_FILE")
+    if not ssl_cert_file or not os.path.isfile(ssl_cert_file):
+        os.environ["SSL_CERT_FILE"] = certifi.where()
+except ImportError:
+    pass
+
+ai_model = None
+AI_MODEL_NAME = os.getenv('GEMINI_MODEL') or os.getenv('GEMINI_MODEL_NAME') or 'gemini-2.0-flash'
+
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
     # If this triggers, check that your .env file is named correctly and in the right folder!
     print("WARNING: No GEMINI_API_KEY found in .env file. AI features will fail.")
 else:
-    # We define the client here so we can use it throughout the app
-    ai_client = genai.Client(api_key=api_key) 
+    try:
+        from google import genai
+    except ImportError:
+        try:
+            import google.generativeai as genai
+        except ImportError:
+            genai = None
+
+    try:
+        if genai and hasattr(genai, 'Client'):
+            ai_model = genai.Client(api_key=api_key)
+        elif genai and hasattr(genai, 'configure') and hasattr(genai, 'GenerativeModel'):
+            genai.configure(api_key=api_key)
+            ai_model = genai.GenerativeModel(AI_MODEL_NAME)
+        else:
+            ai_model = None
+    except Exception as exc:
+        print(f"WARNING: Gemini client could not be initialized: {exc}")
+        ai_model = None
+
+
+def _generate_ai_content(prompt):
+    if ai_model is None:
+        raise RuntimeError('AI model not configured')
+
+    if hasattr(ai_model, 'models') and hasattr(ai_model.models, 'generate_content'):
+        return ai_model.models.generate_content(model=AI_MODEL_NAME, contents=prompt)
+
+    if hasattr(ai_model, 'generate_content'):
+        return ai_model.generate_content(prompt)
+
+    raise RuntimeError('Unsupported Gemini client configuration')
 
 # --- FLASK SETUP ---
 app = Flask(__name__)
@@ -980,7 +1020,7 @@ def calculate_pet_lifestyle(user_id, current_order_count=None):
     with app.app_context():
         db = get_db()
         try:
-            if 'ai_model' not in globals():
+            if ai_model is None:
                 return
 
             # Check if user has a pet profile
@@ -1017,7 +1057,7 @@ def calculate_pet_lifestyle(user_id, current_order_count=None):
             elif _is_endpoint_in_cooldown('pet_lifestyle'):
                 return
             else:
-                response = ai_model.generate_content(prompt)
+                response = _generate_ai_content(prompt)
                 classification = response.text.strip().replace("'", "").replace('"', "")
                 _cache_set(cache_key, classification, AI_CACHE_TTL_SECONDS['pet_lifestyle'])
             
@@ -3460,7 +3500,7 @@ def inventory_insights():
             'insights': fallback_payload
         }), 200
 
-    if 'ai_model' not in globals():
+    if ai_model is None:
         return jsonify({'source': 'fallback', 'insights': fallback_payload}), 200
 
     products = db.execute('SELECT name, stock_status FROM products').fetchall()
@@ -3486,7 +3526,7 @@ Rules:
 - No markdown. No code fences."""
 
     try:
-        response = ai_model.generate_content(prompt)
+        response = _generate_ai_content(prompt)
         parsed = _normalize_insights_payload(_safe_json_loads(response.text))
         if not parsed:
             parsed = fallback_payload
@@ -3531,7 +3571,7 @@ def business_summary():
             'summary': fallback_summary
         }), 200
 
-    if 'ai_model' not in globals():
+    if ai_model is None:
         return jsonify({
             'source': 'fallback',
             'summary': fallback_summary
@@ -3562,7 +3602,7 @@ OUTPUT REQUIREMENTS:
 3. Provide strategic recommendations (e.g., liquidating dead stock) based on the inventory and sales data.
 4. Keep the tone professional, objective, and highly analytical. Avoid overly generic praise."""
 
-        response = ai_model.generate_content(prompt)
+        response = _generate_ai_content(prompt)
         summary_text = response.text.strip()
         if not summary_text:
             summary_text = fallback_summary
@@ -3789,7 +3829,7 @@ def business_summary_v2():
             'analytics': structured_payload
         }), 200
 
-    if 'ai_model' not in globals():
+    if ai_model is None:
         return jsonify({
             'source': 'fallback',
             'analytics': structured_payload
@@ -3845,7 +3885,7 @@ Rules:
 - related_ids may reference chart ids or table ids only.
 - No markdown. No code fences. No HTML."""
 
-        response = ai_model.generate_content(prompt)
+        response = _generate_ai_content(prompt)
         parsed = _normalize_business_summary_v2_interpretation(
             _safe_json_loads(response.text),
             valid_chart_ids=chart_ids,
@@ -3950,7 +3990,7 @@ def inventory_forecast():
             'report': fallback_report
         }), 200
 
-    if 'ai_model' not in globals():
+    if ai_model is None:
         return jsonify({'source': 'fallback', 'report': fallback_report}), 200
 
     try:
@@ -4046,7 +4086,7 @@ Rules:
 - Keep row count <= 20.
 - No markdown. No code fences. No HTML."""
 
-        response = ai_model.generate_content(prompt)
+        response = _generate_ai_content(prompt)
         parsed = _normalize_forecast_payload(_safe_json_loads(response.text))
         if not parsed or not parsed.get('table', {}).get('rows'):
             parsed = fallback_report
@@ -5050,14 +5090,14 @@ def api_recommendations():
     if cached_products is not None:
         return jsonify({'source': 'cache', 'products': cached_products})
 
-    if _is_endpoint_in_cooldown('recommendations') or 'ai_model' not in globals():
+    if _is_endpoint_in_cooldown('recommendations') or ai_model is None:
         fallback_products = _fallback_recommendations(db, cart_items, limit=2)
         return jsonify({'source': 'fallback', 'products': fallback_products}), 200
 
     prompt = f"{pet_profile}\nUser cart: {cart_items}. Available inventory: {inventory_context}\nBased ONLY on the pet's specific profile/lifestyle and the current cart items, suggest exactly 2 highly relevant complementary products from the available inventory. Return ONLY a raw JSON array containing the 2 exact product name strings. Do not include markdown, code blocks, or explanations."
 
     try:
-        response = ai_model.generate_content(prompt)
+        response = _generate_ai_content(prompt)
         parsed_names = _safe_json_loads(response.text)
         product_names = _normalize_recommendation_names(parsed_names)
 
@@ -5119,7 +5159,7 @@ def api_chat():
             'error': 'Chat is temporarily paused due to quota limits. Please try again shortly.'
         }), 503
 
-    if 'ai_model' not in globals():
+    if ai_model is None:
         return jsonify({'error': 'AI model not configured'}), 500
     
     db = get_db()
@@ -5219,7 +5259,7 @@ STRICT GUARDRAILS & RULES:
         return jsonify({'response': cached_chat_text})
 
     try:
-        response = ai_model.generate_content(prompt)
+        response = _generate_ai_content(prompt)
         ai_text = response.text.strip()
 
         if _is_health_advice_intent(user_message) and VET_DISCLAIMER not in ai_text:
@@ -5261,6 +5301,13 @@ STRICT GUARDRAILS & RULES:
     except Exception as e:
         if _is_quota_error(e):
             _set_endpoint_cooldown('chat')
+            retry_after = _cooldown_remaining('chat')
+            print(f"AI Chat quota error: {e}")
+            return jsonify({
+                "error": "AI chat is temporarily unavailable due to quota limits. Please try again shortly.",
+                "retry_after_seconds": retry_after
+            }), 503
+
         print(f"AI Chat error: {e}")
         return jsonify({"error": "Failed to generate chat response"}), 500
 

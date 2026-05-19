@@ -788,7 +788,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (response.ok && data.response) {
                     botMsgDiv.innerHTML = formatMarkdownToHTML(data.response);
                 } else {
-                    botMsgDiv.innerText = 'Sorry, I am having trouble connecting right now.';
+                    const serverError = data && (data.error || data.message) ? (data.error || data.message) : '';
+                    if (response.status === 503 && data && data.retry_after_seconds) {
+                        botMsgDiv.innerText = `${serverError || 'AI is temporarily unavailable.'} Please try again in ${data.retry_after_seconds} seconds.`;
+                    } else if (serverError) {
+                        botMsgDiv.innerText = serverError;
+                    } else {
+                        botMsgDiv.innerText = 'Sorry, I am having trouble connecting right now.';
+                    }
                 }
                 chatHistory.appendChild(botMsgDiv);
                 
