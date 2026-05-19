@@ -30,15 +30,28 @@ if (overlay && sidebar) {
 
 // --- PROFILE EDIT LOGIC ---
 if (editIcon && emailSpan) {
-    editIcon.addEventListener("click", function() {
+    editIcon.addEventListener("click", async function() {
         const currentEmail = emailSpan.innerText;
         const newEmail = prompt("Enter new email:", currentEmail);
         
         if (newEmail && newEmail !== currentEmail) {
-            emailSpan.innerText = newEmail;
-            // Note: This only changes the UI. 
-            // Database sync will require a POST fetch later.
-            console.log("Email updated locally to: " + newEmail);
+            try {
+                const response = await fetch("/admin/profile/email", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email: newEmail })
+                });
+                const data = await response.json();
+
+                if (!response.ok) {
+                    alert(data.error || "Unable to update email.");
+                    return;
+                }
+
+                emailSpan.innerText = data.email || newEmail;
+            } catch (error) {
+                alert("Unable to update email right now.");
+            }
         }
     });
 }
