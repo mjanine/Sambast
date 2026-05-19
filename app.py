@@ -12,7 +12,7 @@ from flask import Flask, render_template, g, request, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -31,9 +31,8 @@ if not api_key:
     # If this triggers, check that your .env file is named correctly and in the right folder!
     print("WARNING: No GEMINI_API_KEY found in .env file. AI features will fail.")
 else:
-    genai.configure(api_key=api_key)
-    # We define the model here so we can use it throughout the app
-    ai_model = genai.GenerativeModel('gemini-2.5-flash') 
+    # We define the client here so we can use it throughout the app
+    ai_client = genai.Client(api_key=api_key) 
 
 # --- FLASK SETUP ---
 app = Flask(__name__)
@@ -355,18 +354,10 @@ def _send_emailjs_message(template_id, template_params):
     except Exception as exc:
         return False, f"EmailJS error: {exc}"
 
-def _queue_order_status_email(payload, template_key):
-    if not payload:
-        return
-
-    settings = _get_emailjs_settings()
-    template_id = settings.get(template_key)
-    if not template_id:
-        return
-
-    template_params = {
-        'to_name': payload['customer_name'],
-        'to_email': payload['customer_email'],
+def _build_order_email_params(payload, to_name, to_email):
+    return {
+        'to_name': to_name,
+        'to_email': to_email,
         'order_no': payload['order_no'],
         'order_id': payload['order_id'],
         'status': payload['status'],
@@ -382,12 +373,60 @@ def _queue_order_status_email(payload, template_key):
         'cancellation_reason_line': payload.get('cancellation_reason_line', '')
     }
 
+def _queue_order_status_email_to(payload, template_key, to_name, to_email):
+    if not payload or not to_email:
+        return
+
+    settings = _get_emailjs_settings()
+    template_id = settings.get(template_key)
+    if not template_id:
+        return
+
+    template_params = _build_order_email_params(payload, to_name, to_email)
+
     def _send_async():
         success, error_message = _send_emailjs_message(template_id, template_params)
         if not success and error_message:
             print(error_message)
 
     threading.Thread(target=_send_async, daemon=True).start()
+
+def _queue_order_status_email(payload, template_key):
+    if not payload:
+        return
+    _queue_order_status_email_to(
+        payload,
+        template_key,
+        payload['customer_name'],
+        payload['customer_email']
+    )
+
+def _get_admin_notification_emails(db):
+    if not db:
+        return []
+
+    raw_emails = _env_first('EMAILJS_ADMIN_NOTIFY_EMAILS', 'ADMIN_NOTIFY_EMAILS', 'ADMIN_EMAIL')
+    emails = []
+    if raw_emails:
+        for value in re.split(r'[;,]', raw_emails):
+            email = value.strip().lower()
+            if email and _validate_email_format(email):
+                emails.append(email)
+    else:
+        rows = db.execute(
+            "SELECT email FROM admin WHERE email IS NOT NULL AND TRIM(email) <> ''"
+        ).fetchall()
+        for row in rows:
+            email = (row['email'] or '').strip().lower()
+            if email and _validate_email_format(email):
+                emails.append(email)
+
+    return list(dict.fromkeys(emails))
+
+def _queue_admin_order_status_email(db, payload, template_key):
+    admin_emails = _get_admin_notification_emails(db)
+    for admin_email in admin_emails:
+        _queue_order_status_email_to(payload, template_key, 'Admin', admin_email)
 
 def _issue_session_otp(db, user_id, recipient_name, recipient_email, otp_purpose, otp_subject, prefix, is_resend=False):
     now_ts = int(time.time())
@@ -1541,7 +1580,7 @@ def _analytics_signature(db):
     order_stats = db.execute('''
         SELECT
             COALESCE(COUNT(*), 0) AS total_orders,
-            COALESCE(MAX(created_at), '') AS latest_order_at
+            COALESCE(CAST(MAX(created_at) AS TEXT), '') AS latest_order_at
         FROM orders
     ''').fetchone()
 
@@ -4046,15 +4085,40 @@ def forgot_password():
 
             if not success:
                 flash(error_message or 'Unable to send verification code.')
-                return render_template(
-                    'admin/verifyemail.html',
-                    masked_email=_mask_email(session['reset_email'])
-                )
+                return render_template('admin/forgotpass.html', email=email)
 
             return redirect(url_for('verify_otp'))
         flash("Email not found.")
-    masked_email = _mask_email(session.get('reset_email'))
-    return render_template('admin/verifyemail.html', masked_email=masked_email)
+        return render_template('admin/forgotpass.html', email=email)
+
+    if 'admin_id' in session:
+        db = get_db()
+        admin = db.execute(
+            'SELECT username, email FROM admin WHERE admin_id = %s',
+            (session['admin_id'],)
+        ).fetchone()
+        admin_email = (admin.get('email') or '').strip().lower() if admin else ''
+        if admin_email:
+            session['reset_email'] = admin_email
+            session['admin_reset_verified'] = False
+
+            recipient_name = admin.get('username') if admin and admin.get('username') else 'Admin'
+            existing_hash = session.get('admin_reset_otp_hash')
+            expires_at = int(session.get('admin_reset_otp_expires_at', 0) or 0)
+            if not (existing_hash and expires_at and int(time.time()) <= expires_at):
+                success, error_message, retry_after = _issue_admin_reset_otp(
+                    recipient_name,
+                    admin_email,
+                    is_resend=False
+                )
+
+                if not success:
+                    flash(error_message or 'Unable to send verification code.')
+            return redirect(url_for('verify_otp'))
+
+        flash('Admin email not found. Please contact support.')
+
+    return render_template('admin/forgotpass.html', email='')
 
 @app.route('/admin/verify-otp', methods=['GET', 'POST'])
 def verify_otp():
@@ -4069,6 +4133,33 @@ def verify_otp():
 
     masked_email = _mask_email(session.get('reset_email'))
     return render_template('admin/verifyemail.html', masked_email=masked_email)
+
+@app.route('/admin/verify-otp/resend', methods=['POST'])
+def resend_admin_otp():
+    reset_email = (session.get('reset_email') or '').strip().lower()
+    if not reset_email:
+        return jsonify({'error': 'No reset email found. Please restart password reset.'}), 400
+
+    db = get_db()
+    admin = db.execute('SELECT username FROM admin WHERE email = %s', (reset_email,)).fetchone()
+    recipient_name = admin['username'] if admin and admin.get('username') else 'Admin'
+
+    success, error_message, retry_after = _issue_admin_reset_otp(
+        recipient_name,
+        reset_email,
+        is_resend=True
+    )
+
+    if not success:
+        payload = {'error': error_message or 'Unable to resend verification code.'}
+        if retry_after is not None:
+            payload['retry_after'] = retry_after
+        return jsonify(payload), 400
+
+    response = {'success': True, 'message': 'Verification code resent.'}
+    if retry_after is not None:
+        response['retry_after'] = retry_after
+    return jsonify(response)
 
 @app.route('/admin/reset-password', methods=['GET', 'POST'])
 def reset_password():
@@ -4346,6 +4437,35 @@ def admin_profile():
     db = get_db()
     admin = db.execute('SELECT * FROM admin WHERE admin_id = %s', (session['admin_id'],)).fetchone()
     return render_template('admin/profile.html', admin=admin)
+
+@app.route('/admin/profile/email', methods=['POST'])
+def admin_update_email():
+    if 'admin_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    payload = request.get_json(silent=True) or {}
+    new_email = (payload.get('email') or '').strip().lower()
+    if not new_email:
+        return jsonify({'error': 'Email is required.'}), 400
+    if not _validate_email_format(new_email):
+        return jsonify({'error': 'Invalid email format.'}), 400
+
+    db = get_db()
+    conflict = db.execute(
+        'SELECT admin_id FROM admin WHERE LOWER(email) = LOWER(%s) AND admin_id != %s',
+        (new_email, session['admin_id'])
+    ).fetchone()
+    if conflict:
+        return jsonify({'error': 'Email is already in use.'}), 409
+
+    db.execute('UPDATE admin SET email = %s WHERE admin_id = %s', (new_email, session['admin_id']))
+    action_text = f"Updated admin email to {new_email}"
+    db.execute(
+        'INSERT INTO audit_logs (admin_id, action_text, category) VALUES (%s, %s, %s)',
+        (session['admin_id'], action_text, get_log_category(action_text))
+    )
+    db.commit()
+    return jsonify({'success': True, 'email': new_email})
 
 # =============================================================================
 # PART 2 — USER REGISTRATION
@@ -5380,6 +5500,68 @@ def order_progress():
                       (session['user_id'],)).fetchone()
     
     return render_template('user/myorderprogress.html', user=user)
+
+@app.route('/cancel-order')
+def cancel_order_page():
+    if 'user_id' not in session:
+        return redirect(url_for('sign_in_page'))
+
+    order_no = (request.args.get('order_no') or session.get('latest_order_no') or '').strip()
+    return render_template('user/cancelorder.html', order_no=order_no)
+
+@app.route('/orders/<order_no>/cancel', methods=['POST'])
+def cancel_user_order(order_no):
+    if 'user_id' not in session:
+        return {'error': 'Unauthorized'}, 401
+
+    payload = request.get_json(silent=True) or {}
+    reason_code = (payload.get('reason') or '').strip()
+    reason_map = {
+        'changed_mind': 'Changed my mind',
+        'wrong_order': 'Ordered wrong item',
+        'too_expensive': 'Too expensive',
+        'other': 'Other'
+    }
+    cancel_reason = reason_map.get(reason_code, reason_code)
+    if not cancel_reason:
+        return {'error': 'Cancellation reason is required.'}, 400
+
+    db = get_db()
+    order = db.execute(
+        'SELECT order_id, status FROM orders WHERE order_no = %s AND user_id = %s',
+        (order_no, session['user_id'])
+    ).fetchone()
+    if not order:
+        return {'error': 'Order not found.'}, 404
+
+    current_status = order['status']
+    if current_status != 'Pending':
+        return {
+            'error': 'Only pending orders can be cancelled.',
+            'status': current_status
+        }, 409
+
+    db.execute(
+        "UPDATE orders SET status = 'Cancelled', cancellation_reason = %s WHERE order_id = %s",
+        (cancel_reason, order['order_id'])
+    )
+    action_text = f"User cancelled Order #{order['order_id']}"
+    db.execute(
+        'INSERT INTO audit_logs (admin_id, action_text, category) VALUES (%s, %s, %s)',
+        (None, action_text, get_log_category(action_text))
+    )
+    db.commit()
+
+    email_payload = _build_order_email_payload(
+        db,
+        order['order_id'],
+        status_override='Cancelled',
+        cancellation_reason_override=cancel_reason
+    )
+    _queue_order_status_email(email_payload, 'template_ready')
+    _queue_admin_order_status_email(db, email_payload, 'template_ready')
+
+    return {'success': True, 'status': 'Cancelled', 'order_no': order_no}
 
 @app.route('/orders/<order_no>/status')
 def order_status(order_no):

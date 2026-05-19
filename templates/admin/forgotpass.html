@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sambast | Forgot Password</title>
+    <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='image/logo.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin/adminlogin.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="auth-page">
+
+    <div class="mobile-container">
+        <header class="header">
+            <img src="{{ url_for('static', filename='image/logo.png') }}" alt="Logo" class="logo">
+        </header>
+
+        <main class="auth-content">
+            <div class="welcome-group">
+                <p class="welcome-sub">RESET PASSWORD</p>
+                <h1 class="admin-name">ENTER EMAIL</h1>
+            </div>
+
+            {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div id="errorMessage" style="color: #ff4d4d; font-size: 0.8rem; text-align: center; margin-bottom: 10px; font-weight: bold;">
+                    {{ messages[0] }}
+                </div>
+            {% endif %}
+            {% endwith %}
+
+            <form class="auth-form" method="POST" action="{{ url_for('forgot_password') }}">
+                <div class="input-field">
+                    <input type="email" name="email" placeholder="EMAIL ADDRESS" value="{{ email or '' }}" required>
+                </div>
+
+                <button type="submit" class="primary-btn">SEND CODE</button>
+            </form>
+        </main>
+
+        <footer class="auth-footer">
+            <p>ORDER. TAP. DONE.</p>
+        </footer>
+    </div>
+
+</body>
+</html>

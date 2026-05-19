@@ -43,6 +43,7 @@
                 <div class="resend-container">
                     <p>Didn't received code?</p>
                     <button type="button" class="resend-btn">Resend Code</button>
+                    <p id="resendStatus" style="margin-top:6px; font-size:0.75rem; font-weight:600;"></p>
                 </div>
 
                 <button type="submit" class="primary-btn">VERIFY</button>
@@ -58,6 +59,14 @@
         const form = document.getElementById('otp-form');
         const inputs = document.querySelectorAll('.otp-container input');
         const hiddenInput = document.getElementById('otp-input');
+        const resendBtn = document.querySelector('.resend-btn');
+        const resendStatus = document.getElementById('resendStatus');
+
+        const setResendStatus = (message) => {
+            if (resendStatus) {
+                resendStatus.textContent = message || '';
+            }
+        };
 
         // Auto-focus next input logic
         inputs.forEach((input, index) => {
@@ -80,6 +89,46 @@
             });
             hiddenInput.value = otp;
         });
+
+        if (resendBtn) {
+            resendBtn.addEventListener('click', async () => {
+                resendBtn.disabled = true;
+                setResendStatus('Sending code...');
+                try {
+                    const response = await fetch('/admin/verify-otp/resend', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    const payload = await response.json();
+
+                    if (!response.ok) {
+                        if (payload.retry_after) {
+                            setResendStatus(`Please wait ${payload.retry_after} seconds before resending.`);
+                            setTimeout(() => {
+                                resendBtn.disabled = false;
+                            }, payload.retry_after * 1000);
+                            return;
+                        }
+                        setResendStatus(payload.error || 'Unable to resend code.');
+                        resendBtn.disabled = false;
+                        return;
+                    }
+
+                    setResendStatus(payload.message || 'Verification code resent.');
+                    if (payload.retry_after) {
+                        const retryAfterMs = payload.retry_after * 1000;
+                        setTimeout(() => {
+                            resendBtn.disabled = false;
+                        }, retryAfterMs);
+                    } else {
+                        resendBtn.disabled = false;
+                    }
+                } catch (error) {
+                    setResendStatus('Unable to resend code. Please try again.');
+                    resendBtn.disabled = false;
+                }
+            });
+        }
     </script>
 </body>
 </html>
